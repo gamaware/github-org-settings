@@ -14,7 +14,12 @@ a baseline, apply corrections, and report drift via GitHub Issues.
 - `.github/workflows/` — CI/CD and scheduled sync workflows
 - `.github/actions/` — Composite actions (security-scan, sync-settings,
   update-pre-commit-composite)
+- `.claude/skills/` — Reusable skills (`/audit`, `/add-repo-override`,
+  `/exclude-repo`)
+- `docs/architecture.md` — System architecture overview
 - `docs/adr/` — Architecture Decision Records
+- `docs/runbooks/` — Operational procedures (exclude repo, add setting,
+  handle drift, onboard repo)
 
 ## Git Workflow
 
@@ -72,6 +77,12 @@ commit hooks — see `.pre-commit-config.yaml` for the full list.
   outputs for drift detection
 - `.github/actions/update-pre-commit-composite/` — reusable
   pre-commit autoupdate + PR creation
+
+## Claude Code Skills
+
+- `/audit` — run a dry-run settings check across all repos
+- `/add-repo-override` — add a per-repo exception to overrides.json
+- `/exclude-repo` — exclude a repository from governance
 
 ## Code Review
 

@@ -145,8 +145,15 @@ corrected in `--apply` mode.
 github-org-settings/
 ├── .claude/
 │   ├── settings.json               # Claude Code hooks config
-│   └── hooks/
-│       └── post-edit.sh             # Auto-format on edit
+│   ├── hooks/
+│   │   └── post-edit.sh             # Auto-format on edit
+│   └── skills/
+│       ├── audit/                   # /audit — dry-run settings check
+│       │   └── SKILL.md
+│       ├── add-repo-override/       # /add-repo-override — add exception
+│       │   └── SKILL.md
+│       └── exclude-repo/            # /exclude-repo — exclude a repo
+│           └── SKILL.md
 ├── .github/
 │   ├── actions/
 │   │   ├── security-scan/           # Composite: Semgrep + Trivy
@@ -173,10 +180,17 @@ github-org-settings/
 │   ├── baseline.json                # Settings enforced on all repos
 │   └── overrides.json               # Per-repo exceptions
 ├── docs/
-│   └── adr/
+│   ├── architecture.md              # System architecture overview
+│   ├── adr/
+│   │   ├── README.md
+│   │   ├── 001-settings-governance.md
+│   │   └── 002-sync-architecture.md
+│   └── runbooks/
 │       ├── README.md
-│       ├── 001-settings-governance.md
-│       └── 002-sync-architecture.md
+│       ├── add-setting.md           # How to add a new setting
+│       ├── exclude-repo.md          # How to exclude a repo
+│       ├── handle-drift.md          # How to respond to drift
+│       └── onboard-repo.md          # How to onboard a new repo
 ├── .coderabbit.yaml                 # CodeRabbit auto-review config
 ├── .gitignore
 ├── .markdownlint.yaml
