@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Lint markdown
-        uses: DavidAnson/markdownlint-cli2-action@db4c2f7b1e4a6de4660458dd8d547f94deaac667 # v22.0.0
+        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # v22.0.0
 
   yaml-lint:
     name: YAML Validation
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Lint YAML
-        uses: ibiqlik/action-yamllint@2576f72e4b4e5aef56e60fc8a24fa17e25be1fef # v3.1.1
+        uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
         with:
           config_file: .yamllint.yml
 
@@ -110,11 +110,11 @@ jobs:
 
       - name: Install zizmor
         run: |
-          ZIZMOR_VERSION="1.5.0"
+          ZIZMOR_VERSION="1.23.1"
           curl -sL "https://github.com/woodruffw/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/zizmor.tar.gz
           mkdir -p /tmp/zizmor-extract
           tar -xzf /tmp/zizmor.tar.gz -C /tmp/zizmor-extract
-          sudo mv /tmp/zizmor-extract/zizmor /usr/local/bin/zizmor
+          find /tmp/zizmor-extract -name zizmor -type f -exec sudo mv {} /usr/local/bin/zizmor \;
           chmod +x /usr/local/bin/zizmor
 
       - name: Run zizmor
