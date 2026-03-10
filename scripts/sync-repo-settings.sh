@@ -261,11 +261,22 @@ apply_branch_protection() {
     local branch="$2"
     local effective="$3"
 
+    # Preserve existing status check contexts if no override is defined.
+    # The PUT endpoint replaces all protection, so we must carry forward
+    # the repo's current contexts to avoid wiping repo-specific CI checks.
     local contexts="[]"
     local override_contexts
     override_contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts // empty' "$OVERRIDES" 2>/dev/null || echo "")
     if [ -n "$override_contexts" ]; then
         contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts' "$OVERRIDES")
+    else
+        # No override — read current contexts from the repo so we don't wipe them
+        local current_contexts
+        current_contexts=$(gh api "repos/$OWNER/$repo/branches/$branch/protection/required_status_checks" --jq '.contexts // []' 2>/dev/null || echo "[]")
+        if [ -n "$current_contexts" ] && [ "$current_contexts" != "[]" ]; then
+            contexts="$current_contexts"
+            log "INFO: Preserving existing status check contexts for $repo"
+        fi
     fi
 
     local strict
