@@ -41,7 +41,7 @@ jobs:
         run: ./scripts/generate-report.sh reports/sync-report.md
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sync-report
           path: reports/sync-report.md
@@ -113,7 +113,7 @@ jobs:
           cat reports/new-repos.md
 
       - name: Upload new repos report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: new-repos-report
           path: reports/new-repos.md
