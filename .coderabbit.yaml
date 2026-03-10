@@ -1,0 +1,35 @@
+reviews:
+  auto_review:
+    enabled: true
+  path_instructions:
+    - path: "scripts/**/*.sh"
+      instructions: |
+        Review for:
+        - shellcheck and shellharden compliance
+        - Proper quoting of all variables
+        - Error handling (set -euo pipefail)
+        - GitHub API usage best practices
+        - No hardcoded tokens or credentials
+    - path: "config/**/*.json"
+      instructions: |
+        Review for:
+        - Valid JSON structure
+        - Settings match documented baseline
+        - Override values are justified
+    - path: ".github/workflows/**"
+      instructions: |
+        Review for:
+        - Pinned action versions (SHA references)
+        - Least-privilege permissions
+        - No credential leaks in logs
+        - Proper secret usage
+    - path: "**/*.md"
+      instructions: |
+        Review for:
+        - Clarity and accuracy
+        - Markdown lint compliance (120 char lines)
+        - No hardcoded values
+  path_filters:
+    - "!**/*.png"
+    - "!**/*.gif"
+    - "!**/*.jpg"

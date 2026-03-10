@@ -1,0 +1,99 @@
+name: Quality Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-lint:
+    name: Markdown Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Lint markdown
+        uses: DavidAnson/markdownlint-cli2-action@db4c2f7b1e4a6de4660458dd8d547f94deaac667 # v22.0.0
+
+  yaml-lint:
+    name: YAML Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Lint YAML
+        uses: ibiqlik/action-yamllint@2576f72e4b4e5aef56e60fc8a24fa17e25be1fef # v3.1.1
+        with:
+          config_file: .yamllint.yml
+
+  shell-check:
+    name: Shell Script Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
+
+  structure:
+    name: Validate Repository Structure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check required files
+        run: |
+          MISSING=0
+          for file in LICENSE README.md .gitignore CODEOWNERS CONTRIBUTING.md \
+                      SECURITY.md CLAUDE.md .pre-commit-config.yaml \
+                      .github/dependabot.yml config/baseline.json \
+                      config/overrides.json; do
+            if [ ! -f "$file" ]; then
+              echo "MISSING: $file"
+              MISSING=$((MISSING + 1))
+            else
+              echo "OK: $file"
+            fi
+          done
+          if [ "$MISSING" -gt 0 ]; then
+            echo "ERROR: $MISSING required files are missing"
+            exit 1
+          fi
+
+      - name: Validate JSON configs
+        run: |
+          for file in config/baseline.json config/overrides.json; do
+            if ! jq empty "$file" 2>/dev/null; then
+              echo "ERROR: Invalid JSON in $file"
+              exit 1
+            else
+              echo "OK: $file is valid JSON"
+            fi
+          done
+
+  actions-security:
+    name: Actions Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install zizmor
+        run: |
+          ZIZMOR_VERSION="1.5.0"
+          curl -sL "https://github.com/woodruffw/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/zizmor.tar.gz
+          mkdir -p /tmp/zizmor-extract
+          tar -xzf /tmp/zizmor.tar.gz -C /tmp/zizmor-extract
+          sudo mv /tmp/zizmor-extract/zizmor /usr/local/bin/zizmor
+          chmod +x /usr/local/bin/zizmor
+
+      - name: Run zizmor
+        run: zizmor --config zizmor.yml .github/workflows/

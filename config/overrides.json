@@ -1,0 +1,40 @@
+{
+  "excluded": [],
+  "repos": {
+    "github-org-settings": {
+      "branch_protection": {
+        "required_status_checks": {
+          "contexts": [
+            "Markdown Linting",
+            "YAML Validation",
+            "Shell Script Validation",
+            "Validate Repository Structure"
+          ]
+        }
+      }
+    },
+    "system-design-course": {
+      "branch_protection": {
+        "required_status_checks": {
+          "contexts": [
+            "Markdown Linting",
+            "YAML Validation",
+            "Shell Script Validation",
+            "Validate Repository Structure",
+            "Security Scan"
+          ]
+        }
+      }
+    },
+    "aws-organization-governance": {
+      "branch_protection": {
+        "required_status_checks": {
+          "contexts": [
+            "Lint and Security Scan",
+            "Terraform Plan"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# Environment
+.env
+.env.local
+
+# Secrets
+*.pem
+*.key
+credentials.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Claude Code
+*.conversation
+
+# Generated reports (kept in CI artifacts, not committed)
+reports/
+
+# Vale styles (downloaded at runtime)
+styles/

@@ -1,0 +1,37 @@
+name: Security Scanning
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1.0.0
+        with:
+          config: auto
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947e7f3b01483832965 # v0.31.0
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f # v3.28.18
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
