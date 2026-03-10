@@ -10,7 +10,7 @@ manage is critical.
 
 If you discover a security issue, please report it privately:
 
-- Email: alejandrogarcia@iteso.mx
+- Email: <alejandrogarcia@iteso.mx>
 - Include: affected file, description, reproduction steps
 
 Do not open a public issue for security vulnerabilities.

@@ -15,9 +15,12 @@ on:
           - "--dry-run"
           - "--apply"
 
+concurrency:
+  group: settings-sync
+  cancel-in-progress: false
+
 permissions:
   contents: read
-  issues: write
 
 jobs:
   sync:
@@ -25,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run settings sync
         id: sync
@@ -35,7 +38,7 @@ jobs:
           github_token: ${{ secrets.ORG_SETTINGS_PAT }}
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sync-report-${{ github.run_number }}
           path: reports/sync-report.md
@@ -49,41 +52,49 @@ jobs:
             echo ""
             echo "| Metric | Value |"
             echo "| --- | --- |"
-            echo "| Repositories scanned | ${{ steps.sync.outputs.total_repos }} |"
-            echo "| Compliant | ${{ steps.sync.outputs.compliant }} |"
-            echo "| Drift detected | ${{ steps.sync.outputs.drift }} |"
-            echo "| Mode | ${{ github.event.inputs.mode || '--apply' }} |"
+            echo "| Repositories scanned | $TOTAL_REPOS |"
+            echo "| Compliant | $COMPLIANT |"
+            echo "| Drift detected | $DRIFT |"
+            echo "| Mode | $MODE |"
             echo ""
             echo "### Full Report"
             echo ""
             cat reports/sync-report.md
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TOTAL_REPOS: ${{ steps.sync.outputs.total_repos }}
+          COMPLIANT: ${{ steps.sync.outputs.compliant }}
+          DRIFT: ${{ steps.sync.outputs.drift }}
+          MODE: ${{ github.event.inputs.mode || '--apply' }}
 
-      - name: Create or update drift issue
+      - name: Create drift issue
         if: steps.sync.outputs.has_drift == 'true'
         env:
           GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
+          DRIFT: ${{ steps.sync.outputs.drift }}
+          TOTAL_REPOS: ${{ steps.sync.outputs.total_repos }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SYNC_MODE: ${{ github.event.inputs.mode || '--apply' }}
         run: |
           TITLE="chore: settings drift detected — $(date '+%Y-%m-%d')"
-          BODY=$(cat <<'ISSUE_EOF'
-          ## Settings Drift Report
+          BODY="## Settings Drift Report
 
-          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          **Mode**: ${{ github.event.inputs.mode || '--apply' }}
-          **Repos with drift**: ${{ steps.sync.outputs.drift }} / ${{ steps.sync.outputs.total_repos }}
+          **Run**: $RUN_URL
+          **Mode**: $SYNC_MODE
+          **Repos with drift**: $DRIFT / $TOTAL_REPOS
 
-          See the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for the full report.
+          See the [workflow run]($RUN_URL) for the full report."
 
-          ISSUE_EOF
-          )
-
-          # Close previous drift issues
-          gh issue list --label "settings-drift" --state open --json number --jq '.[].number' | while read -r num; do
-            gh issue close "$num" --comment "Superseded by new sync run."
-          done
-
-          # Create new issue
+          # Create new issue first, then close old ones
           gh issue create --title "$TITLE" --body "$BODY" --label "settings-drift"
+
+          # Close previous drift issues (all except the one just created)
+          LATEST=$(gh issue list --label "settings-drift" --state open --json number --jq '.[0].number')
+          gh issue list --label "settings-drift" --state open --json number --jq '.[].number' | while read -r num; do
+            if [ "$num" != "$LATEST" ]; then
+              gh issue close "$num" --comment "Superseded by new sync run."
+            fi
+          done
 
       - name: Close drift issue if compliant
         if: steps.sync.outputs.has_drift == 'false'
@@ -99,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Check for new repos
         id: newrepos
@@ -116,7 +127,7 @@ jobs:
             || date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ')
           NEW_REPOS=$(gh repo list gamaware --no-archived --json name,createdAt \
             --jq "[.[] | select(.createdAt > \"$WEEK_AGO\")] | .[].name" \
-            --limit 200 || echo "")
+            --limit 1000 || echo "")
 
           if [ -n "$NEW_REPOS" ]; then
             echo "has_new=true" >> "$GITHUB_OUTPUT"
@@ -148,7 +159,7 @@ jobs:
             --label "new-repo"
 
       - name: Upload new repos report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: new-repos-report-${{ github.run_number }}
           path: reports/new-repos.md

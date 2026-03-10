@@ -17,7 +17,7 @@ Run a dry-run sync to check for drift without applying changes.
 ./scripts/sync-repo-settings.sh --dry-run
 ```
 
-2. Display the report:
+1. Display the report:
 
 ```bash
 cat reports/sync-report.md

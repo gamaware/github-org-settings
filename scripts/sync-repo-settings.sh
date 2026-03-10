@@ -22,8 +22,8 @@ log() {
 get_repos() {
     local excluded
     excluded=$(jq -r '.excluded[]' "$OVERRIDES" 2>/dev/null || echo "")
-    gh repo list "$OWNER" --no-archived --json name --jq '.[].name' --limit 200 | while read -r repo; do
-        if ! echo "$excluded" | grep -qx "$repo"; then
+    gh repo list "$OWNER" --no-archived --json name --jq '.[].name' --limit 1000 | while read -r repo; do
+        if ! echo "$excluded" | grep -qxF "$repo"; then
             echo "$repo"
         fi
     done
@@ -134,7 +134,7 @@ SECURITY_EOF
     echo -e "$changes"
 }
 
-# Enable Dependabot vulnerability alerts
+# Enable or disable Dependabot vulnerability alerts
 sync_vulnerability_alerts() {
     local repo="$1"
     local effective
@@ -142,17 +142,16 @@ sync_vulnerability_alerts() {
     local changes=""
 
     local want_alerts
-    want_alerts=$(echo "$effective" | jq -r '.security.vulnerability_alerts // false')
-    if [ "$want_alerts" != "true" ]; then
-        return
-    fi
+    want_alerts=$(echo "$effective" | jq -r '.security.vulnerability_alerts // "true"')
 
     local current_alerts
     current_alerts=$(gh api "repos/$OWNER/$repo/vulnerability-alerts" -i 2>/dev/null | head -1 || echo "")
-
+    local is_enabled=false
     if echo "$current_alerts" | grep -q "204"; then
-        log "OK: vulnerability alerts for $repo"
-    else
+        is_enabled=true
+    fi
+
+    if [ "$want_alerts" = "true" ] && [ "$is_enabled" = "false" ]; then
         changes="- Vulnerability alerts: \`disabled\` -> \`enabled\`\n"
         if [ "$MODE" = "--apply" ]; then
             gh api -X PUT "repos/$OWNER/$repo/vulnerability-alerts" > /dev/null 2>&1 \
@@ -161,6 +160,17 @@ sync_vulnerability_alerts() {
         else
             log "DRIFT detected in vulnerability alerts for $repo"
         fi
+    elif [ "$want_alerts" = "false" ] && [ "$is_enabled" = "true" ]; then
+        changes="- Vulnerability alerts: \`enabled\` -> \`disabled\`\n"
+        if [ "$MODE" = "--apply" ]; then
+            gh api -X DELETE "repos/$OWNER/$repo/vulnerability-alerts" > /dev/null 2>&1 \
+                || log "WARN: Could not disable vulnerability alerts for $repo"
+            log "APPLIED vulnerability alerts for $repo"
+        else
+            log "DRIFT detected in vulnerability alerts for $repo"
+        fi
+    else
+        log "OK: vulnerability alerts for $repo"
     fi
     echo -e "$changes"
 }
@@ -320,7 +330,8 @@ PROTECT_EOF
     ) > /dev/null 2>&1
 }
 
-# Sync standard labels across repos
+# Sync standard labels across repos.
+# Uses process substitution to avoid subshell scoping issues with piped loops.
 sync_labels() {
     local repo="$1"
     local effective
@@ -330,19 +341,21 @@ sync_labels() {
     local label_count
     label_count=$(echo "$effective" | jq -r '.labels // [] | length')
     if [ "$label_count" = "0" ]; then
+        echo ""
         return
     fi
 
     local current_labels
     current_labels=$(gh api "repos/$OWNER/$repo/labels" --jq '.[].name' 2>/dev/null || echo "")
 
-    echo "$effective" | jq -c '.labels[]' 2>/dev/null | while read -r label_json; do
+    while read -r label_json; do
+        [ -z "$label_json" ] && continue
         local name color description
         name=$(echo "$label_json" | jq -r '.name')
         color=$(echo "$label_json" | jq -r '.color')
         description=$(echo "$label_json" | jq -r '.description')
 
-        if ! echo "$current_labels" | grep -qx "$name"; then
+        if ! echo "$current_labels" | grep -qxF "$name"; then
             changes="${changes}- Label missing: \`$name\`\n"
             if [ "$MODE" = "--apply" ]; then
                 gh api -X POST "repos/$OWNER/$repo/labels" \
@@ -350,22 +363,32 @@ sync_labels() {
                     > /dev/null 2>&1 || log "WARN: Could not create label $name for $repo"
             fi
         fi
-    done
+    done < <(echo "$effective" | jq -c '.labels[]' 2>/dev/null)
+
+    if [ -n "$changes" ]; then
+        log "DRIFT detected in labels for $repo"
+    else
+        log "OK: labels for $repo"
+    fi
     echo -e "$changes"
 }
 
-# Check default branch is 'main'
+# Check default branch matches config
 check_default_branch() {
     local repo="$1"
+    local effective
+    effective=$(get_effective_settings "$repo")
     local changes=""
 
+    local expected_branch
+    expected_branch=$(echo "$effective" | jq -r '.branch_protection.branch')
     local default_branch
     default_branch=$(gh api "repos/$OWNER/$repo" --jq '.default_branch' 2>/dev/null || echo "")
 
-    if [ "$default_branch" != "main" ] && [ -n "$default_branch" ]; then
-        changes="- Default branch: \`$default_branch\` (expected \`main\`)\n"
+    if [ "$default_branch" != "$expected_branch" ] && [ -n "$default_branch" ]; then
+        changes="- Default branch: \`$default_branch\` (expected \`$expected_branch\`)\n"
         if [ "$MODE" = "--apply" ]; then
-            gh api -X PATCH "repos/$OWNER/$repo" -f default_branch="main" > /dev/null 2>&1 \
+            gh api -X PATCH "repos/$OWNER/$repo" -f default_branch="$expected_branch" > /dev/null 2>&1 \
                 || log "WARN: Could not rename default branch for $repo (may need manual rename)"
             log "APPLIED default branch rename for $repo"
         else

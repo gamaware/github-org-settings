@@ -13,6 +13,7 @@ Add a per-repo exception to `config/overrides.json`.
 `$ARGUMENTS` should be in the format: `<repo-name> <setting-path> <value>`
 
 Examples:
+
 - `my-repo branch_protection.required_status_checks.contexts '["Build","Test"]'`
 - `my-repo repo_settings.has_wiki true`
 
