@@ -62,7 +62,7 @@ sync_repo_settings() {
     for key in $settings_keys; do
         local desired current_val
         desired=$(echo "$effective" | jq -r ".repo_settings.$key")
-        current_val=$(echo "$current" | jq -r ".$key // empty")
+        current_val=$(echo "$current" | jq -r ".$key")
 
         if [ "$desired" != "$current_val" ]; then
             changes="${changes}- \`$key\`: \`$current_val\` -> \`$desired\`\n"
