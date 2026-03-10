@@ -79,6 +79,22 @@ jobs:
             fi
           done
 
+      - name: Validate baseline schema
+        run: |
+          ERRORS=0
+          for section in repo_settings security branch_protection labels required_files; do
+            if ! jq -e ".$section" config/baseline.json > /dev/null 2>&1; then
+              echo "ERROR: Missing section '$section' in baseline.json"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "OK: section '$section' present"
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "ERROR: baseline.json schema validation failed"
+            exit 1
+          fi
+
   actions-security:
     name: Actions Security
     runs-on: ubuntu-latest

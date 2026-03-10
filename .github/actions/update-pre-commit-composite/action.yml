@@ -1,0 +1,36 @@
+name: Update Pre-commit Hooks Composite Action
+description: Updates pre-commit hook versions and creates a PR
+
+inputs:
+  github_token:
+    description: GitHub token for creating PRs
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.x"
+
+    - name: Install pre-commit
+      shell: bash
+      run: pip install pre-commit
+
+    - name: Update hooks
+      shell: bash
+      run: pre-commit autoupdate
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+      with:
+        token: ${{ inputs.github_token }}
+        commit-message: "chore: update pre-commit hook versions"
+        title: "chore: update pre-commit hook versions"
+        body: |
+          Automated update of pre-commit hook versions.
+
+          Review the changes to `.pre-commit-config.yaml` and merge if CI passes.
+        branch: chore/update-pre-commit-hooks
+        delete-branch: true
