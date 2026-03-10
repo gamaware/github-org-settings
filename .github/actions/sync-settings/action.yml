@@ -36,8 +36,9 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github_token }}
         REPORT_FILE: reports/sync-report.md
+        SYNC_MODE: ${{ inputs.mode }}
       run: |
-        ./scripts/sync-repo-settings.sh "${{ inputs.mode }}"
+        ./scripts/sync-repo-settings.sh "$SYNC_MODE"
         echo "report_file=reports/sync-report.md" >> "$GITHUB_OUTPUT"
 
     - name: Parse report
