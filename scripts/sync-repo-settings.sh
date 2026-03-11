@@ -373,6 +373,71 @@ sync_labels() {
     echo -e "$changes"
 }
 
+# Ensure Copilot code review ruleset exists
+sync_rulesets() {
+    local repo="$1"
+    local effective
+    effective=$(get_effective_settings "$repo")
+    local changes=""
+
+    local ruleset_name
+    ruleset_name=$(echo "$effective" | jq -r '.rulesets.copilot_code_review.name // empty')
+    if [ -z "$ruleset_name" ]; then
+        echo ""
+        return
+    fi
+
+    # List rulesets — bail if the API call itself fails
+    local rulesets_json existing
+    if ! rulesets_json=$(gh api "repos/$OWNER/$repo/rulesets" 2>/dev/null); then
+        log "WARN: Could not list rulesets for $repo"
+        echo ""
+        return
+    fi
+    existing=$(echo "$rulesets_json" | jq -r --arg name "$ruleset_name" '.[] | select(.name == $name) | .id' | head -n1)
+
+    local desired_ruleset
+    desired_ruleset=$(echo "$effective" | jq '.rulesets.copilot_code_review')
+
+    if [ -n "$existing" ]; then
+        # Compare full ruleset config, not just enforcement
+        local current_ruleset desired_normalized current_normalized
+        current_ruleset=$(gh api "repos/$OWNER/$repo/rulesets/$existing" 2>/dev/null || echo "")
+        desired_normalized=$(echo "$desired_ruleset" | jq -cS '{name, enforcement, target, conditions, rules}')
+        current_normalized=$(echo "$current_ruleset" | jq -cS '{name, enforcement, target, conditions, rules}')
+        if [ "$current_normalized" != "$desired_normalized" ]; then
+            changes="- Copilot review ruleset: configuration drift detected\n"
+            if [ "$MODE" = "--apply" ]; then
+                if gh api -X PUT "repos/$OWNER/$repo/rulesets/$existing" \
+                    --input <(echo "$desired_ruleset") \
+                    > /dev/null 2>&1; then
+                    log "APPLIED Copilot review ruleset for $repo"
+                else
+                    log "WARN: Could not update ruleset for $repo"
+                fi
+            else
+                log "DRIFT detected in Copilot review ruleset for $repo"
+            fi
+        else
+            log "OK: Copilot review ruleset for $repo"
+        fi
+    else
+        changes="- Copilot review ruleset: **missing** -> will be created\n"
+        if [ "$MODE" = "--apply" ]; then
+            if gh api -X POST "repos/$OWNER/$repo/rulesets" \
+                --input <(echo "$desired_ruleset") \
+                > /dev/null 2>&1; then
+                log "APPLIED Copilot review ruleset for $repo"
+            else
+                log "WARN: Could not create ruleset for $repo"
+            fi
+        else
+            log "DRIFT detected: missing Copilot review ruleset for $repo"
+        fi
+    fi
+    echo -e "$changes"
+}
+
 # Check default branch matches config
 check_default_branch() {
     local repo="$1"
@@ -511,6 +576,13 @@ REPORT_HEADER
         protection_changes=$(sync_branch_protection "$repo")
         if [ -n "$protection_changes" ]; then
             repo_drift="${repo_drift}### Branch Protection\n\n${protection_changes}\n"
+        fi
+
+        # Rulesets (Copilot code review)
+        local ruleset_changes
+        ruleset_changes=$(sync_rulesets "$repo")
+        if [ -n "$ruleset_changes" ]; then
+            repo_drift="${repo_drift}### Rulesets\n\n${ruleset_changes}\n"
         fi
 
         # Labels

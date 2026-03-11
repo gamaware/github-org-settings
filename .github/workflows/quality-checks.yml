@@ -90,7 +90,7 @@ jobs:
       - name: Validate baseline schema
         run: |
           ERRORS=0
-          for section in repo_settings security branch_protection labels required_files; do
+          for section in repo_settings security branch_protection rulesets labels required_files; do
             if ! jq -e ".$section" config/baseline.json > /dev/null 2>&1; then
               echo "ERROR: Missing section '$section' in baseline.json"
               ERRORS=$((ERRORS + 1))

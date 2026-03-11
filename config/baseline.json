@@ -66,6 +66,30 @@
       "description": "New repository discovered"
     }
   ],
+  "rulesets": {
+    "copilot_code_review": {
+      "name": "Copilot review for default branch",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": ["~DEFAULT_BRANCH"],
+          "exclude": []
+        }
+      },
+      "rules": [
+        {"type": "deletion"},
+        {"type": "non_fast_forward"},
+        {
+          "type": "copilot_code_review",
+          "parameters": {
+            "review_on_push": false,
+            "review_draft_pull_requests": false
+          }
+        }
+      ]
+    }
+  },
   "required_files": [
     "LICENSE",
     "README.md",
