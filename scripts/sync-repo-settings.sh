@@ -22,8 +22,8 @@ log() {
 get_repos() {
     local excluded
     excluded=$(jq -r '.excluded[]' "$OVERRIDES" 2>/dev/null || echo "")
-    gh repo list "$OWNER" --no-archived --json name --jq '.[].name' --limit 200 | while read -r repo; do
-        if ! echo "$excluded" | grep -qx "$repo"; then
+    gh repo list "$OWNER" --no-archived --json name --jq '.[].name' --limit 1000 | while read -r repo; do
+        if ! echo "$excluded" | grep -qxF "$repo"; then
             echo "$repo"
         fi
     done
@@ -134,6 +134,47 @@ SECURITY_EOF
     echo -e "$changes"
 }
 
+# Enable or disable Dependabot vulnerability alerts
+sync_vulnerability_alerts() {
+    local repo="$1"
+    local effective
+    effective=$(get_effective_settings "$repo")
+    local changes=""
+
+    local want_alerts
+    want_alerts=$(echo "$effective" | jq -r '.security.vulnerability_alerts // "true"')
+
+    local current_alerts
+    current_alerts=$(gh api "repos/$OWNER/$repo/vulnerability-alerts" -i 2>/dev/null | head -1 || echo "")
+    local is_enabled=false
+    if echo "$current_alerts" | grep -q "204"; then
+        is_enabled=true
+    fi
+
+    if [ "$want_alerts" = "true" ] && [ "$is_enabled" = "false" ]; then
+        changes="- Vulnerability alerts: \`disabled\` -> \`enabled\`\n"
+        if [ "$MODE" = "--apply" ]; then
+            gh api -X PUT "repos/$OWNER/$repo/vulnerability-alerts" > /dev/null 2>&1 \
+                || log "WARN: Could not enable vulnerability alerts for $repo"
+            log "APPLIED vulnerability alerts for $repo"
+        else
+            log "DRIFT detected in vulnerability alerts for $repo"
+        fi
+    elif [ "$want_alerts" = "false" ] && [ "$is_enabled" = "true" ]; then
+        changes="- Vulnerability alerts: \`enabled\` -> \`disabled\`\n"
+        if [ "$MODE" = "--apply" ]; then
+            gh api -X DELETE "repos/$OWNER/$repo/vulnerability-alerts" > /dev/null 2>&1 \
+                || log "WARN: Could not disable vulnerability alerts for $repo"
+            log "APPLIED vulnerability alerts for $repo"
+        else
+            log "DRIFT detected in vulnerability alerts for $repo"
+        fi
+    else
+        log "OK: vulnerability alerts for $repo"
+    fi
+    echo -e "$changes"
+}
+
 # Compare and optionally apply branch protection
 sync_branch_protection() {
     local repo="$1"
@@ -230,11 +271,22 @@ apply_branch_protection() {
     local branch="$2"
     local effective="$3"
 
+    # Preserve existing status check contexts if no override is defined.
+    # The PUT endpoint replaces all protection, so we must carry forward
+    # the repo's current contexts to avoid wiping repo-specific CI checks.
     local contexts="[]"
     local override_contexts
     override_contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts // empty' "$OVERRIDES" 2>/dev/null || echo "")
     if [ -n "$override_contexts" ]; then
         contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts' "$OVERRIDES")
+    else
+        # No override — read current contexts from the repo so we don't wipe them
+        local current_contexts
+        current_contexts=$(gh api "repos/$OWNER/$repo/branches/$branch/protection/required_status_checks" --jq '.contexts // []' 2>/dev/null || echo "[]")
+        if [ -n "$current_contexts" ] && [ "$current_contexts" != "[]" ]; then
+            contexts="$current_contexts"
+            log "INFO: Preserving existing status check contexts for $repo"
+        fi
     fi
 
     local strict
@@ -276,6 +328,104 @@ apply_branch_protection() {
 }
 PROTECT_EOF
     ) > /dev/null 2>&1
+}
+
+# Sync standard labels across repos.
+# Uses process substitution to avoid subshell scoping issues with piped loops.
+sync_labels() {
+    local repo="$1"
+    local effective
+    effective=$(get_effective_settings "$repo")
+    local changes=""
+
+    local label_count
+    label_count=$(echo "$effective" | jq -r '.labels // [] | length')
+    if [ "$label_count" = "0" ]; then
+        echo ""
+        return
+    fi
+
+    local current_labels
+    current_labels=$(gh api "repos/$OWNER/$repo/labels" --jq '.[].name' 2>/dev/null || echo "")
+
+    while read -r label_json; do
+        [ -z "$label_json" ] && continue
+        local name color description
+        name=$(echo "$label_json" | jq -r '.name')
+        color=$(echo "$label_json" | jq -r '.color')
+        description=$(echo "$label_json" | jq -r '.description')
+
+        if ! echo "$current_labels" | grep -qxF "$name"; then
+            changes="${changes}- Label missing: \`$name\`\n"
+            if [ "$MODE" = "--apply" ]; then
+                gh api -X POST "repos/$OWNER/$repo/labels" \
+                    -f name="$name" -f color="$color" -f description="$description" \
+                    > /dev/null 2>&1 || log "WARN: Could not create label $name for $repo"
+            fi
+        fi
+    done < <(echo "$effective" | jq -c '.labels[]' 2>/dev/null)
+
+    if [ -n "$changes" ]; then
+        log "DRIFT detected in labels for $repo"
+    else
+        log "OK: labels for $repo"
+    fi
+    echo -e "$changes"
+}
+
+# Check default branch matches config
+check_default_branch() {
+    local repo="$1"
+    local effective
+    effective=$(get_effective_settings "$repo")
+    local changes=""
+
+    local expected_branch
+    expected_branch=$(echo "$effective" | jq -r '.branch_protection.branch')
+    local default_branch
+    default_branch=$(gh api "repos/$OWNER/$repo" --jq '.default_branch' 2>/dev/null || echo "")
+
+    if [ "$default_branch" != "$expected_branch" ] && [ -n "$default_branch" ]; then
+        changes="- Default branch: \`$default_branch\` (expected \`$expected_branch\`)\n"
+        if [ "$MODE" = "--apply" ]; then
+            gh api -X PATCH "repos/$OWNER/$repo" -f default_branch="$expected_branch" > /dev/null 2>&1 \
+                || log "WARN: Could not rename default branch for $repo (may need manual rename)"
+            log "APPLIED default branch rename for $repo"
+        else
+            log "DRIFT detected in default branch for $repo"
+        fi
+    else
+        log "OK: default branch for $repo"
+    fi
+    echo -e "$changes"
+}
+
+# Check for missing description and topics
+check_repo_metadata() {
+    local repo="$1"
+    local changes=""
+
+    local current
+    current=$(gh api "repos/$OWNER/$repo" 2>/dev/null) || return
+
+    local description
+    description=$(echo "$current" | jq -r '.description // ""')
+    if [ -z "$description" ] || [ "$description" = "null" ]; then
+        changes="${changes}- **Missing repository description**\n"
+    fi
+
+    local topics
+    topics=$(echo "$current" | jq -r '.topics | length')
+    if [ "$topics" = "0" ]; then
+        changes="${changes}- **No repository topics configured**\n"
+    fi
+
+    if [ -n "$changes" ]; then
+        log "WARN: metadata gaps for $repo"
+    else
+        log "OK: metadata for $repo"
+    fi
+    echo -e "$changes"
 }
 
 # Check for required files
@@ -328,6 +478,13 @@ REPORT_HEADER
 
         local repo_drift=""
 
+        # Default branch
+        local branch_changes
+        branch_changes=$(check_default_branch "$repo")
+        if [ -n "$branch_changes" ]; then
+            repo_drift="${repo_drift}### Default Branch\n\n${branch_changes}\n"
+        fi
+
         # Repo settings
         local repo_changes
         repo_changes=$(sync_repo_settings "$repo")
@@ -342,11 +499,32 @@ REPORT_HEADER
             repo_drift="${repo_drift}### Security\n\n${security_changes}\n"
         fi
 
+        # Vulnerability alerts
+        local vuln_changes
+        vuln_changes=$(sync_vulnerability_alerts "$repo")
+        if [ -n "$vuln_changes" ]; then
+            repo_drift="${repo_drift}### Vulnerability Alerts\n\n${vuln_changes}\n"
+        fi
+
         # Branch protection
         local protection_changes
         protection_changes=$(sync_branch_protection "$repo")
         if [ -n "$protection_changes" ]; then
             repo_drift="${repo_drift}### Branch Protection\n\n${protection_changes}\n"
+        fi
+
+        # Labels
+        local label_changes
+        label_changes=$(sync_labels "$repo")
+        if [ -n "$label_changes" ]; then
+            repo_drift="${repo_drift}### Labels\n\n${label_changes}\n"
+        fi
+
+        # Metadata (advisory only — not auto-fixed)
+        local metadata_changes
+        metadata_changes=$(check_repo_metadata "$repo")
+        if [ -n "$metadata_changes" ]; then
+            repo_drift="${repo_drift}### Metadata (Manual Action Needed)\n\n${metadata_changes}\n"
         fi
 
         # Required files

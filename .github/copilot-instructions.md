@@ -1,4 +1,4 @@
-Review priorities for this repository:
+# Review Priorities
 
 1. Shell script quality: shellcheck and shellharden compliance, proper
    quoting, error handling (set -euo pipefail), no hardcoded tokens

@@ -25,4 +25,4 @@ Open an issue using the appropriate template:
 
 ## Contact
 
-alejandrogarcia@iteso.mx
+<alejandrogarcia@iteso.mx>

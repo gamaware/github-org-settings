@@ -13,7 +13,6 @@ if [ ! -f "$REPORT_FILE" ]; then
 fi
 
 # Extract summary metrics for the workflow
-drift_count=$(grep -c "^## " "$REPORT_FILE" | tr -d ' ' || echo "0")
 total_repos=$(grep "Total repositories" "$REPORT_FILE" | grep -oE '[0-9]+' || echo "0")
 compliant=$(grep "Compliant" "$REPORT_FILE" | grep -oE '[0-9]+' || echo "0")
 drift=$(grep "Drift detected" "$REPORT_FILE" | grep -oE '[0-9]+' || echo "0")

@@ -15,6 +15,10 @@ on:
           - "--dry-run"
           - "--apply"
 
+concurrency:
+  group: settings-sync
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -22,99 +26,148 @@ jobs:
   sync:
     name: Sync Settings
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - name: Sync repository settings
-        env:
-          GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
-          REPORT_FILE: reports/sync-report.md
-        run: |
-          MODE="${{ github.event.inputs.mode || '--apply' }}"
-          ./scripts/sync-repo-settings.sh "$MODE"
-
-      - name: Parse report
-        id: report
-        run: ./scripts/generate-report.sh reports/sync-report.md
+      - name: Run settings sync
+        id: sync
+        uses: ./.github/actions/sync-settings
+        with:
+          mode: ${{ github.event.inputs.mode || '--apply' }}
+          github_token: ${{ secrets.ORG_SETTINGS_PAT }}
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: sync-report
+          name: sync-report-${{ github.run_number }}
           path: reports/sync-report.md
           retention-days: 90
 
-      - name: Send email report
+      - name: Post job summary
         if: always()
-        uses: dawidd6/action-send-mail@v3.12.0
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: |
-            GitHub Settings Sync Report — ${{ steps.report.outputs.drift > 0 && 'Drift Detected' || 'All Compliant' }}
-          to: gamaware@gmail.com
-          from: GitHub Org Settings <${{ secrets.EMAIL_USERNAME }}>
-          body: |
-            GitHub Organization Settings Sync Report
-            ==========================================
+        run: |
+          {
+            echo "## Settings Sync Results"
+            echo ""
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| Repositories scanned | $TOTAL_REPOS |"
+            echo "| Compliant | $COMPLIANT |"
+            echo "| Drift detected | $DRIFT |"
+            echo "| Mode | $MODE |"
+            echo ""
+            echo "### Full Report"
+            echo ""
+            cat reports/sync-report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TOTAL_REPOS: ${{ steps.sync.outputs.total_repos }}
+          COMPLIANT: ${{ steps.sync.outputs.compliant }}
+          DRIFT: ${{ steps.sync.outputs.drift }}
+          MODE: ${{ github.event.inputs.mode || '--apply' }}
 
-            Date: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
-            Mode: ${{ github.event.inputs.mode || '--apply' }}
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Create drift issue
+        if: steps.sync.outputs.has_drift == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
+          DRIFT: ${{ steps.sync.outputs.drift }}
+          TOTAL_REPOS: ${{ steps.sync.outputs.total_repos }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SYNC_MODE: ${{ github.event.inputs.mode || '--apply' }}
+        run: |
+          TITLE="chore: settings drift detected — $(date '+%Y-%m-%d')"
+          BODY="## Settings Drift Report
 
-            Repositories scanned: ${{ steps.report.outputs.total_repos }}
-            Compliant: ${{ steps.report.outputs.compliant }}
-            Drift detected: ${{ steps.report.outputs.drift }}
+          **Run**: $RUN_URL
+          **Mode**: $SYNC_MODE
+          **Repos with drift**: $DRIFT / $TOTAL_REPOS
 
-            Full report is attached and available as a workflow artifact.
-          attachments: reports/sync-report.md
+          See the [workflow run]($RUN_URL) for the full report."
+
+          # Create new issue first, then close old ones
+          if ! gh issue create --title "$TITLE" --body "$BODY" --label "settings-drift"; then
+            echo "::error::Failed to create drift issue"
+            exit 1
+          fi
+
+          # Close previous drift issues (all except the one just created)
+          LATEST=$(gh issue list --label "settings-drift" --state open --json number --jq '.[0].number')
+          gh issue list --label "settings-drift" --state open --json number --jq '.[].number' | while read -r num; do
+            if [ "$num" != "$LATEST" ]; then
+              gh issue close "$num" --comment "Superseded by new sync run."
+            fi
+          done
+
+      - name: Close drift issue if compliant
+        if: steps.sync.outputs.has_drift == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
+        run: |
+          gh issue list --label "settings-drift" --state open --json number --jq '.[].number' | while read -r num; do
+            gh issue close "$num" --comment "All repositories are now compliant."
+          done
 
   new-repo-check:
     name: Discover New Repositories
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Check for new repos
+        id: newrepos
         env:
           GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
         run: |
-          echo "## New Repository Discovery" > reports/new-repos.md
-          echo "" >> reports/new-repos.md
+          mkdir -p reports
+          {
+            echo "## New Repository Discovery"
+            echo ""
+          } > reports/new-repos.md
 
-          # Get all current repos
-          gh repo list gamaware --no-archived --json name,createdAt --jq '.[] | "\(.name) (created: \(.createdAt))"' --limit 200 > /tmp/all-repos.txt
-
-          # Check repos created in the last 7 days
-          WEEK_AGO=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ')
+          WEEK_AGO=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ')
           NEW_REPOS=$(gh repo list gamaware --no-archived --json name,createdAt \
-            --jq "[.[] | select(.createdAt > \"$WEEK_AGO\")] | .[].name" --limit 200 || echo "")
+            --jq "[.[] | select(.createdAt > \"$WEEK_AGO\")] | .[].name" \
+            --limit 1000 || echo "")
 
           if [ -n "$NEW_REPOS" ]; then
-            echo "New repositories found in the last 7 days:" >> reports/new-repos.md
-            echo "" >> reports/new-repos.md
-            echo "$NEW_REPOS" | while read -r repo; do
-              echo "- **$repo**" >> reports/new-repos.md
-            done
-            echo "" >> reports/new-repos.md
-            echo "These repositories will be included in the next settings sync." >> reports/new-repos.md
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "New repositories found in the last 7 days:"
+              echo ""
+              echo "$NEW_REPOS" | while read -r repo; do
+                echo "- **$repo**"
+              done
+              echo ""
+              echo "These repositories will be included in the next settings sync."
+            } >> reports/new-repos.md
           else
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
             echo "No new repositories found in the last 7 days." >> reports/new-repos.md
           fi
 
-          cat reports/new-repos.md
+          cat reports/new-repos.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create issue for new repos
+        if: steps.newrepos.outputs.has_new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
+        run: |
+          BODY=$(cat reports/new-repos.md)
+          gh issue create \
+            --title "chore: new repositories discovered — $(date '+%Y-%m-%d')" \
+            --body "$BODY" \
+            --label "new-repo"
 
       - name: Upload new repos report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: new-repos-report
+          name: new-repos-report-${{ github.run_number }}
           path: reports/new-repos.md
           retention-days: 30

@@ -1,0 +1,47 @@
+name: Sync Repository Settings
+description: Compare and apply GitHub settings across all repos against a baseline
+
+inputs:
+  mode:
+    description: "Run mode: --dry-run or --apply"
+    required: true
+    default: "--dry-run"
+  github_token:
+    description: PAT with repo and admin scopes
+    required: true
+
+outputs:
+  report_file:
+    description: Path to the generated report
+    value: ${{ steps.sync.outputs.report_file }}
+  total_repos:
+    description: Number of repos scanned
+    value: ${{ steps.parse.outputs.total_repos }}
+  compliant:
+    description: Number of compliant repos
+    value: ${{ steps.parse.outputs.compliant }}
+  drift:
+    description: Number of repos with drift
+    value: ${{ steps.parse.outputs.drift }}
+  has_drift:
+    description: Whether any drift was detected
+    value: ${{ steps.parse.outputs.has_drift }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run settings sync
+      id: sync
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPORT_FILE: reports/sync-report.md
+        SYNC_MODE: ${{ inputs.mode }}
+      run: |
+        ./scripts/sync-repo-settings.sh "$SYNC_MODE"
+        echo "report_file=reports/sync-report.md" >> "$GITHUB_OUTPUT"
+
+    - name: Parse report
+      id: parse
+      shell: bash
+      run: ./scripts/generate-report.sh reports/sync-report.md
