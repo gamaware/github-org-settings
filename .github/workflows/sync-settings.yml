@@ -88,7 +88,10 @@ jobs:
           See the [workflow run]($RUN_URL) for the full report."
 
           # Create new issue first, then close old ones
-          gh issue create --title "$TITLE" --body "$BODY" --label "settings-drift"
+          if ! gh issue create --title "$TITLE" --body "$BODY" --label "settings-drift"; then
+            echo "::error::Failed to create drift issue"
+            exit 1
+          fi
 
           # Close previous drift issues (all except the one just created)
           LATEST=$(gh issue list --label "settings-drift" --state open --json number --jq '.[0].number')

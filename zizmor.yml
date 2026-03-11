@@ -6,4 +6,4 @@ rules:
   secrets-outside-env:
     ignore:
       - sync-settings.yml
-      - update-pre-commit-hooks.yml
+      - update-pre-commit-hooks.yml:25
