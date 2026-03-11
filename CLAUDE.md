@@ -100,10 +100,11 @@ The sync script (`scripts/sync-repo-settings.sh`) enforces:
    alerts
 3. **Branch protection**: reviews, CODEOWNERS, linear history,
    conversation resolution
-4. **Labels**: standard issue labels across all repos
-5. **Default branch**: ensures all repos use `main`
-6. **Metadata**: flags missing descriptions and topics (advisory)
-7. **Required files**: LICENSE, README, CODEOWNERS, etc.
+4. **Rulesets**: Copilot code review ruleset on default branch
+5. **Labels**: standard issue labels across all repos
+6. **Default branch**: ensures all repos use `main`
+7. **Metadata**: flags missing descriptions and topics (advisory)
+8. **Required files**: LICENSE, README, CODEOWNERS, etc.
 
 Configuration lives in `config/baseline.json` with per-repo
 overrides in `config/overrides.json`.

@@ -98,6 +98,18 @@ ensures clean `git log` and bisectability.
 | Required conversation resolution | `true` | All comments must be resolved |
 | Enforce admins | `false` | Admins can bypass when needed |
 
+### Rulesets
+
+The Copilot code review ruleset is enforced on every repository's
+default branch. The sync script creates it if missing and verifies
+enforcement is active.
+
+| Rule | Purpose |
+| --- | --- |
+| `deletion` | Prevent branch deletion |
+| `non_fast_forward` | Prevent force pushes |
+| `copilot_code_review` | Require Copilot review on PRs |
+
 ### Labels
 
 Standard labels are created on every repo for consistent issue
@@ -272,8 +284,15 @@ Add repo names to the `excluded` array in `config/overrides.json`:
 
 ## Code Review
 
+- **GitHub Copilot**: auto-review via ruleset (enforced automatically
+  by the sync script)
 - **CodeRabbit**: auto-review on PRs via `.coderabbit.yaml`
-- **GitHub Copilot**: auto-review via ruleset with custom instructions
+
+> **Note:** CodeRabbit must be enabled manually per repository through
+> the [CodeRabbit dashboard](https://app.coderabbit.ai). There is no
+> API to automate this. After installing the GitHub App, select "All
+> repositories" to cover new repos automatically, or add repos
+> individually through the dashboard.
 
 ## CI/CD Pipelines
 
