@@ -31,8 +31,9 @@ a baseline, apply corrections, and report drift via GitHub Issues.
 
 ## Pre-commit Hooks
 
-General, secrets, shell, markdown, GitHub Actions, and conventional
-commit hooks — see `.pre-commit-config.yaml` for the full list.
+General, secrets, shell, markdown, prose (Vale), GitHub Actions
+(actionlint, zizmor), and conventional commit hooks — see
+`.pre-commit-config.yaml` for the full list.
 
 ## Claude Code Hooks
 
@@ -65,7 +66,8 @@ commit hooks — see `.pre-commit-config.yaml` for the full list.
 
 - `sync-settings.yml` — weekly settings sync + GitHub Issue reports
 - `quality-checks.yml` — markdown, YAML, shell, structure, JSON
-  schema validation
+  schema validation, link checking, zizmor (Actions security),
+  Vale (prose linting)
 - `security.yml` — Semgrep SAST + Trivy SCA (via composite action)
 - `update-pre-commit-hooks.yml` — weekly auto-update via PR (via
   composite action)
@@ -83,6 +85,8 @@ commit hooks — see `.pre-commit-config.yaml` for the full list.
 - `/audit` — run a dry-run settings check across all repos
 - `/add-repo-override` — add a per-repo exception to overrides.json
 - `/exclude-repo` — exclude a repository from governance
+- `/ship [PR-number]` — end-to-end PR lifecycle: update docs, commit,
+  create PR, monitor CI, address reviews (CodeRabbit + Copilot), merge
 
 ## Code Review
 

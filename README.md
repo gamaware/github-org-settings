@@ -289,8 +289,8 @@ Add repo names to the `excluded` array in `config/overrides.json`:
 - **CodeRabbit**: auto-review on PRs via `.coderabbit.yaml`
 
 > **Note:** CodeRabbit must be enabled manually per repository through
-> the [CodeRabbit dashboard](https://app.coderabbit.ai). There is no
-> API to automate this. After installing the GitHub App, select "All
+> the [CodeRabbit dashboard](https://app.coderabbit.ai). No API exists
+> to automate this step. After installing the GitHub App, select "All
 > repositories" to cover new repos automatically, or add repos
 > individually through the dashboard.
 
