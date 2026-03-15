@@ -137,8 +137,12 @@ report (not auto-created, since content is repo-specific).
 | `CODEOWNERS` | Assign default reviewers |
 | `CONTRIBUTING.md` | Contribution guidelines |
 | `SECURITY.md` | Vulnerability disclosure policy |
+| `CLAUDE.md` | Claude Code project instructions |
 | `.pre-commit-config.yaml` | Local linting and validation |
+| `.coderabbit.yaml` | CodeRabbit auto-review configuration |
+| `.github/copilot-instructions.md` | Copilot code review instructions |
 | `.github/dependabot.yml` | Automated dependency updates |
+| `.github/PULL_REQUEST_TEMPLATE.md` | PR checklist template |
 
 ### Metadata Checks (Advisory)
 
