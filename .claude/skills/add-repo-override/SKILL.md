@@ -1,7 +1,14 @@
 ---
 name: add-repo-override
-description: Add a per-repo settings override to overrides.json
+description: >-
+  Add a per-repo settings override to overrides.json so a specific
+  repository can deviate from the baseline. Use this skill whenever the
+  user wants to customize settings for one repo, add an exception, or
+  says "this repo needs different branch protection" or "override the
+  wiki setting for this repo".
+disable-model-invocation: true
 user-invocable: true
+argument-hint: "<repo-name> <setting-path> <value>"
 ---
 
 # Add Repository Override
