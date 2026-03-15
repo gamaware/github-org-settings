@@ -1,7 +1,7 @@
 repos:
   # General
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -44,20 +44,38 @@ repos:
 
   # Markdown
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.44.0
+    rev: v0.47.0
     hooks:
       - id: markdownlint
         args: ["--fix"]
 
+  # Prose
+  - repo: local
+    hooks:
+      - id: vale
+        name: vale
+        entry: bash -c 'vale sync --no-progress 2>/dev/null; vale "$@"' --
+        language: system
+        types: [markdown]
+
   # GitHub Actions
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.7
+    rev: v1.7.11
     hooks:
       - id: actionlint
 
+  - repo: local
+    hooks:
+      - id: zizmor
+        name: zizmor
+        entry: zizmor .github/workflows/
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false
+
   # Conventional Commits
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.1.0
+    rev: v4.4.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
