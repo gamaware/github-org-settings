@@ -62,8 +62,9 @@ jobs:
           MISSING=0
           for file in LICENSE README.md .gitignore CODEOWNERS CONTRIBUTING.md \
                       SECURITY.md CLAUDE.md .pre-commit-config.yaml \
-                      .github/dependabot.yml config/baseline.json \
-                      config/overrides.json; do
+                      .coderabbit.yaml .github/copilot-instructions.md \
+                      .github/dependabot.yml .github/PULL_REQUEST_TEMPLATE.md \
+                      config/baseline.json config/overrides.json; do
             if [ ! -f "$file" ]; then
               echo "MISSING: $file"
               MISSING=$((MISSING + 1))

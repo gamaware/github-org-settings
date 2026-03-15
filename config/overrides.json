@@ -26,6 +26,18 @@
         }
       }
     },
+    "cloud-architecture-course": {
+      "branch_protection": {
+        "required_status_checks": {
+          "contexts": [
+            "Markdown Linting",
+            "YAML Validation",
+            "Validate Repository Structure",
+            "Security Scan"
+          ]
+        }
+      }
+    },
     "aws-organization-governance": {
       "branch_protection": {
         "required_status_checks": {
