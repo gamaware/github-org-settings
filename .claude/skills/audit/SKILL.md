@@ -1,8 +1,12 @@
 ---
 name: audit
-description: Run a dry-run settings audit across all repositories
-user-invocable: true
+description: >-
+  Run a dry-run settings audit across all repositories to detect drift
+  from baseline. Use this skill whenever the user wants to check repo
+  settings, find drift, audit governance, or says "are all repos in
+  sync?" or "check settings across the org".
 disable-model-invocation: true
+user-invocable: true
 ---
 
 # Audit Repository Settings

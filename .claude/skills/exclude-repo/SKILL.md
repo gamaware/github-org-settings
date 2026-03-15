@@ -1,7 +1,13 @@
 ---
 name: exclude-repo
-description: Exclude a repository from settings governance
+description: >-
+  Exclude a repository from settings governance so the sync script
+  skips it entirely. Use this skill whenever the user wants to remove
+  a repo from governance, stop syncing a repo, or says "don't manage
+  this repo" or "exclude my-fork from settings sync".
+disable-model-invocation: true
 user-invocable: true
+argument-hint: "<repo-name>"
 ---
 
 # Exclude Repository
