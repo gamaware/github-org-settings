@@ -140,7 +140,7 @@ jobs:
           persist-credentials: false
 
       - name: Check markdown links
-        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        uses: gaurav-nelson/github-action-markdown-link-check@5c5dfc0ac2e225883c0e5f03a85311ec2830d368 # v1
         with:
           config-file: '.markdown-link-check.json'
           use-quiet-mode: 'yes'
