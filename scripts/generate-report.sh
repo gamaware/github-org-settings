@@ -22,7 +22,7 @@ echo "compliant=$compliant"
 echo "drift=$drift"
 
 # Output for GitHub Actions
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
+if [ "${GITHUB_OUTPUT:-}" != "" ]; then
     {
         echo "total_repos=$total_repos"
         echo "compliant=$compliant"
