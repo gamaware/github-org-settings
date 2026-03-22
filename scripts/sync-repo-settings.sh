@@ -34,7 +34,7 @@ get_effective_settings() {
     local repo="$1"
     local override
     override=$(jq -r --arg r "$repo" '.repos[$r] // empty' "$OVERRIDES" 2>/dev/null || echo "")
-    if [ -n "$override" ]; then
+    if [ "$override" != "" ]; then
         jq -s '.[0] * .[1]' "$BASELINE" <(echo "$override")
     else
         cat "$BASELINE"
@@ -59,7 +59,7 @@ sync_repo_settings() {
     local settings_keys
     settings_keys=$(echo "$effective" | jq -r '.repo_settings | keys[]')
 
-    for key in $settings_keys; do
+    for key in "${settings_keys[@]}"; do
         local desired current_val
         desired=$(echo "$effective" | jq -r ".repo_settings.$key")
         current_val=$(echo "$current" | jq -r ".$key")
@@ -70,7 +70,7 @@ sync_repo_settings() {
         fi
     done
 
-    if [ -n "$changes" ]; then
+    if [ "$changes" != "" ]; then
         if [ "$MODE" = "--apply" ]; then
             gh api -X PATCH "repos/$OWNER/$repo" --input <(echo "$patch") > /dev/null 2>&1
             log "APPLIED repo settings for $repo"
@@ -101,7 +101,7 @@ sync_security() {
 
     local current_scanning="disabled"
     local current_push="disabled"
-    if [ -n "$current_security" ]; then
+    if [ "$current_security" != "" ]; then
         current_scanning=$(echo "$current_security" | jq -r '.secret_scanning.status // "disabled"')
         current_push=$(echo "$current_security" | jq -r '.secret_scanning_push_protection.status // "disabled"')
     fi
@@ -277,13 +277,13 @@ apply_branch_protection() {
     local contexts="[]"
     local override_contexts
     override_contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts // empty' "$OVERRIDES" 2>/dev/null || echo "")
-    if [ -n "$override_contexts" ]; then
+    if [ "$override_contexts" != "" ]; then
         contexts=$(jq -r --arg r "$repo" '.repos[$r].branch_protection.required_status_checks.contexts' "$OVERRIDES")
     else
         # No override — read current contexts from the repo so we don't wipe them
         local current_contexts
         current_contexts=$(gh api "repos/$OWNER/$repo/branches/$branch/protection/required_status_checks" --jq '.contexts // []' 2>/dev/null || echo "[]")
-        if [ -n "$current_contexts" ] && [ "$current_contexts" != "[]" ]; then
+        if [ "$current_contexts" != "" ] && [ "$current_contexts" != "[]" ]; then
             contexts="$current_contexts"
             log "INFO: Preserving existing status check contexts for $repo"
         fi
@@ -349,7 +349,7 @@ sync_labels() {
     current_labels=$(gh api "repos/$OWNER/$repo/labels" --jq '.[].name' 2>/dev/null || echo "")
 
     while read -r label_json; do
-        [ -z "$label_json" ] && continue
+        [ "$label_json" = "" ] && continue
         local name color description
         name=$(echo "$label_json" | jq -r '.name')
         color=$(echo "$label_json" | jq -r '.color')
@@ -365,7 +365,7 @@ sync_labels() {
         fi
     done < <(echo "$effective" | jq -c '.labels[]' 2>/dev/null)
 
-    if [ -n "$changes" ]; then
+    if [ "$changes" != "" ]; then
         log "DRIFT detected in labels for $repo"
     else
         log "OK: labels for $repo"
@@ -382,7 +382,7 @@ sync_rulesets() {
 
     local ruleset_name
     ruleset_name=$(echo "$effective" | jq -r '.rulesets.copilot_code_review.name // empty')
-    if [ -z "$ruleset_name" ]; then
+    if [ "$ruleset_name" = "" ]; then
         echo ""
         return
     fi
@@ -399,7 +399,7 @@ sync_rulesets() {
     local desired_ruleset
     desired_ruleset=$(echo "$effective" | jq '.rulesets.copilot_code_review')
 
-    if [ -n "$existing" ]; then
+    if [ "$existing" != "" ]; then
         # Compare full ruleset config, not just enforcement
         local current_ruleset desired_normalized current_normalized
         current_ruleset=$(gh api "repos/$OWNER/$repo/rulesets/$existing" 2>/dev/null || echo "")
@@ -450,7 +450,7 @@ check_default_branch() {
     local default_branch
     default_branch=$(gh api "repos/$OWNER/$repo" --jq '.default_branch' 2>/dev/null || echo "")
 
-    if [ "$default_branch" != "$expected_branch" ] && [ -n "$default_branch" ]; then
+    if [ "$default_branch" != "$expected_branch" ] && [ "$default_branch" != "" ]; then
         changes="- Default branch: \`$default_branch\` (expected \`$expected_branch\`)\n"
         if [ "$MODE" = "--apply" ]; then
             gh api -X PATCH "repos/$OWNER/$repo" -f default_branch="$expected_branch" > /dev/null 2>&1 \
@@ -475,7 +475,7 @@ check_repo_metadata() {
 
     local description
     description=$(echo "$current" | jq -r '.description // ""')
-    if [ -z "$description" ] || [ "$description" = "null" ]; then
+    if [ "$description" = "" ] || [ "$description" = "null" ]; then
         changes="${changes}- **Missing repository description**\n"
     fi
 
@@ -485,7 +485,7 @@ check_repo_metadata() {
         changes="${changes}- **No repository topics configured**\n"
     fi
 
-    if [ -n "$changes" ]; then
+    if [ "$changes" != "" ]; then
         log "WARN: metadata gaps for $repo"
     else
         log "OK: metadata for $repo"
@@ -502,7 +502,7 @@ check_required_files() {
     local files
     files=$(echo "$effective" | jq -r '.required_files[]')
 
-    for file in $files; do
+    for file in "${files[@]}"; do
         if ! gh api "repos/$OWNER/$repo/contents/$file" > /dev/null 2>&1; then
             missing="${missing}- Missing: \`$file\`\n"
         fi
@@ -535,7 +535,7 @@ REPORT_HEADER
     local total_ok=0
 
     while read -r repo; do
-        [ -z "$repo" ] && continue
+        [ "$repo" = "" ] && continue
         log "Processing: $repo"
 
         echo "## $repo" >> "$REPORT_FILE"
@@ -546,67 +546,67 @@ REPORT_HEADER
         # Default branch
         local branch_changes
         branch_changes=$(check_default_branch "$repo")
-        if [ -n "$branch_changes" ]; then
+        if [ "$branch_changes" != "" ]; then
             repo_drift="${repo_drift}### Default Branch\n\n${branch_changes}\n"
         fi
 
         # Repo settings
         local repo_changes
         repo_changes=$(sync_repo_settings "$repo")
-        if [ -n "$repo_changes" ]; then
+        if [ "$repo_changes" != "" ]; then
             repo_drift="${repo_drift}### Repository Settings\n\n${repo_changes}\n"
         fi
 
         # Security
         local security_changes
         security_changes=$(sync_security "$repo")
-        if [ -n "$security_changes" ]; then
+        if [ "$security_changes" != "" ]; then
             repo_drift="${repo_drift}### Security\n\n${security_changes}\n"
         fi
 
         # Vulnerability alerts
         local vuln_changes
         vuln_changes=$(sync_vulnerability_alerts "$repo")
-        if [ -n "$vuln_changes" ]; then
+        if [ "$vuln_changes" != "" ]; then
             repo_drift="${repo_drift}### Vulnerability Alerts\n\n${vuln_changes}\n"
         fi
 
         # Branch protection
         local protection_changes
         protection_changes=$(sync_branch_protection "$repo")
-        if [ -n "$protection_changes" ]; then
+        if [ "$protection_changes" != "" ]; then
             repo_drift="${repo_drift}### Branch Protection\n\n${protection_changes}\n"
         fi
 
         # Rulesets (Copilot code review)
         local ruleset_changes
         ruleset_changes=$(sync_rulesets "$repo")
-        if [ -n "$ruleset_changes" ]; then
+        if [ "$ruleset_changes" != "" ]; then
             repo_drift="${repo_drift}### Rulesets\n\n${ruleset_changes}\n"
         fi
 
         # Labels
         local label_changes
         label_changes=$(sync_labels "$repo")
-        if [ -n "$label_changes" ]; then
+        if [ "$label_changes" != "" ]; then
             repo_drift="${repo_drift}### Labels\n\n${label_changes}\n"
         fi
 
         # Metadata (advisory only — not auto-fixed)
         local metadata_changes
         metadata_changes=$(check_repo_metadata "$repo")
-        if [ -n "$metadata_changes" ]; then
+        if [ "$metadata_changes" != "" ]; then
             repo_drift="${repo_drift}### Metadata (Manual Action Needed)\n\n${metadata_changes}\n"
         fi
 
         # Required files
         local missing_files
         missing_files=$(check_required_files "$repo")
-        if [ -n "$missing_files" ]; then
+        if [ "$missing_files" != "" ]; then
             repo_drift="${repo_drift}### Missing Files\n\n${missing_files}\n"
         fi
 
-        if [ -n "$repo_drift" ]; then
+        if [ "$repo_drift" != "" ]; then
             echo -e "$repo_drift" >> "$REPORT_FILE"
             total_drift=$((total_drift + 1))
         else

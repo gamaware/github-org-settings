@@ -25,22 +25,30 @@ repos:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.0
+  - repo: local
     hooks:
       - id: gitleaks
+        name: gitleaks
+        entry: gitleaks git --pre-commit --redact --no-banner
+        language: system
+        pass_filenames: false
 
   # Shell
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0
+  - repo: local
     hooks:
       - id: shellcheck
-        args: ["--severity=warning"]
+        name: shellcheck
+        entry: shellcheck --severity=warning
+        language: system
+        types: [shell]
 
-  - repo: https://github.com/anordal/shellharden
-    rev: v4.3.1
+  - repo: local
     hooks:
       - id: shellharden
+        name: shellharden
+        entry: shellharden --check
+        language: system
+        types: [shell]
 
   # Markdown
   - repo: https://github.com/igorshubovych/markdownlint-cli
@@ -54,7 +62,7 @@ repos:
     hooks:
       - id: vale
         name: vale
-        entry: bash -c 'vale sync --no-progress 2>/dev/null; vale "$@"' --
+        entry: bash -c 'vale sync 2>/dev/null; vale "$@"' --
         language: system
         types: [markdown]
 
