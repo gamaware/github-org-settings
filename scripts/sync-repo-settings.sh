@@ -57,7 +57,7 @@ sync_repo_settings() {
     # Build patch payload from baseline repo_settings
     local patch="{}"
     local settings_keys
-    settings_keys=$(echo "$effective" | jq -r '.repo_settings | keys[]')
+    mapfile -t settings_keys < <(echo "$effective" | jq -r '.repo_settings | keys[]')
 
     for key in "${settings_keys[@]}"; do
         local desired current_val
@@ -500,7 +500,7 @@ check_required_files() {
     effective=$(get_effective_settings "$repo")
     local missing=""
     local files
-    files=$(echo "$effective" | jq -r '.required_files[]')
+    mapfile -t files < <(echo "$effective" | jq -r '.required_files[]')
 
     for file in "${files[@]}"; do
         if ! gh api "repos/$OWNER/$repo/contents/$file" > /dev/null 2>&1; then
