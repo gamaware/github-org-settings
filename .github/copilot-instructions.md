@@ -1,4 +1,6 @@
-# Review Priorities
+# GitHub Copilot Code Review Instructions
+
+## Review Priority
 
 1. Shell script quality: shellcheck and shellharden compliance, proper
    quoting, error handling (set -euo pipefail), no hardcoded tokens
@@ -12,3 +14,12 @@
    permissions, no script injection
 6. Markdown quality: 120 char line limit, fenced code blocks, accurate
    documentation
+
+## Expectations
+
+- All shell scripts must pass shellcheck and shellharden without
+  suppressions.
+- Variables must be quoted (`"$VAR"`), braces only when needed.
+- No hardcoded credentials, account IDs, or tokens in any file.
+- Conventional commits required for all changes.
+- Fix lint violations directly instead of adding ignore comments.

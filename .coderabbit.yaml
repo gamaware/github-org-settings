@@ -1,6 +1,8 @@
+language: en-US
 reviews:
   auto_review:
     enabled: true
+    drafts: false
   path_instructions:
     - path: "scripts/**/*.sh"
       instructions: |
@@ -33,3 +35,5 @@ reviews:
     - "!**/*.png"
     - "!**/*.gif"
     - "!**/*.jpg"
+chat:
+  auto_reply: true
