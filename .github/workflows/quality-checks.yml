@@ -100,7 +100,10 @@ jobs:
             fi
           done
           # Validate label structure
-          LABEL_ERRORS=$(jq '[.labels[] | select(.name == null or .color == null or .description == null)] | length' config/baseline.json)
+          JQ_FILTER='[.labels[] | select(
+            .name == null or .color == null or .description == null
+          )] | length'
+          LABEL_ERRORS=$(jq "$JQ_FILTER" config/baseline.json)
           if [ "$LABEL_ERRORS" -gt 0 ]; then
             echo "ERROR: $LABEL_ERRORS labels missing required fields (name, color, description)"
             ERRORS=$((ERRORS + LABEL_ERRORS))
@@ -122,7 +125,10 @@ jobs:
       - name: Install zizmor
         run: |
           ZIZMOR_VERSION="1.23.1"
-          curl -sL "https://github.com/woodruffw/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/zizmor.tar.gz
+          ZIZMOR_BASE="https://github.com/woodruffw/zizmor/releases"
+          ZIZMOR_TAR="zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sL "${ZIZMOR_BASE}/download/v${ZIZMOR_VERSION}/${ZIZMOR_TAR}" \
+            -o /tmp/zizmor.tar.gz
           mkdir -p /tmp/zizmor-extract
           tar -xzf /tmp/zizmor.tar.gz -C /tmp/zizmor-extract
           find /tmp/zizmor-extract -name zizmor -type f -exec sudo mv {} /usr/local/bin/zizmor \;
@@ -161,7 +167,9 @@ jobs:
           VALE_VERSION: "3.13.1"
         run: |
           tmpdir="$(mktemp -d)"
-          wget -q "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          VALE_BASE="https://github.com/errata-ai/vale/releases"
+          VALE_TAR="vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          wget -q "${VALE_BASE}/download/v${VALE_VERSION}/${VALE_TAR}"
           tar xzf "vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -C "$tmpdir" vale
           sudo mv "$tmpdir/vale" /usr/local/bin/vale
 
