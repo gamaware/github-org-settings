@@ -70,10 +70,24 @@ sync_repo_settings() {
         fi
     done
 
+    # GitHub returns 422 invalid_squash_commit_setting_combo when
+    # squash_merge_commit_message is sent without squash_merge_commit_title
+    # (or vice versa), so always send the pair from the effective baseline.
+    if echo "$patch" | jq -e 'has("squash_merge_commit_title") or has("squash_merge_commit_message")' > /dev/null; then
+        local squash_pair
+        squash_pair=$(echo "$effective" | jq '.repo_settings | {squash_merge_commit_title, squash_merge_commit_message} | with_entries(select(.value != null))')
+        patch=$(echo "$patch" | jq --argjson s "$squash_pair" '. + $s')
+    fi
+
     if [ "$changes" != "" ]; then
         if [ "$MODE" = "--apply" ]; then
-            gh api -X PATCH "repos/$OWNER/$repo" --input <(echo "$patch") > /dev/null 2>&1
-            log "APPLIED repo settings for $repo"
+            local output
+            if output=$(gh api -X PATCH "repos/$OWNER/$repo" --input <(echo "$patch") 2>&1); then
+                log "APPLIED repo settings for $repo"
+            else
+                log "ERROR: could not apply repo settings for $repo: $(echo "$output" | head -n 1)"
+                changes="${changes}- ERROR: settings not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in repo settings for $repo"
         fi
@@ -115,7 +129,7 @@ sync_security() {
         changes="- Secret scanning: \`$current_scanning\` -> \`$desired_scanning_status\`\n"
         changes="${changes}- Push protection: \`$current_push\` -> \`$desired_push_status\`\n"
         if [ "$MODE" = "--apply" ]; then
-            gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
+            if gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
 {
   "security_and_analysis": {
     "secret_scanning": {"status": "$desired_scanning_status"},
@@ -123,8 +137,12 @@ sync_security() {
   }
 }
 SECURITY_EOF
-            ) > /dev/null 2>&1 || log "WARN: Could not update security settings for $repo (may require admin)"
-            log "APPLIED security settings for $repo"
+            ) > /dev/null 2>&1; then
+                log "APPLIED security settings for $repo"
+            else
+                log "WARN: Could not update security settings for $repo (may require admin)"
+                changes="${changes}- ERROR: security settings not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in security settings for $repo"
         fi
