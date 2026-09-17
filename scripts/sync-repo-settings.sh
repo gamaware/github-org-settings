@@ -203,14 +203,25 @@ sync_branch_protection() {
     branch=$(echo "$effective" | jq -r '.branch_protection.branch')
 
     local current
-    current=$(gh api "repos/$OWNER/$repo/branches/$branch/protection" 2>/dev/null) || {
+    if ! current=$(gh api "repos/$OWNER/$repo/branches/$branch/protection" 2>&1); then
+        # Private repos on the Free plan cannot have branch protection at
+        # all, so this is not drift the sync can ever resolve.
+        if echo "$current" | grep -q "Upgrade to GitHub Pro"; then
+            log "SKIP: branch protection unavailable on this plan for $repo"
+            echo ""
+            return
+        fi
         changes="- Branch protection: **not configured** -> will be created\n"
         if [ "$MODE" = "--apply" ]; then
-            apply_branch_protection "$repo" "$branch" "$effective"
+            if apply_branch_protection "$repo" "$branch" "$effective"; then
+                log "APPLIED branch protection for $repo"
+            else
+                changes="${changes}- ERROR: branch protection not applied (see log)\n"
+            fi
         fi
         echo -e "$changes"
         return
-    }
+    fi
 
     # Check each protection setting
     local current_reviews desired_reviews
@@ -273,8 +284,11 @@ sync_branch_protection() {
 
     if [ "$drift" = "true" ]; then
         if [ "$MODE" = "--apply" ]; then
-            apply_branch_protection "$repo" "$branch" "$effective"
-            log "APPLIED branch protection for $repo"
+            if apply_branch_protection "$repo" "$branch" "$effective"; then
+                log "APPLIED branch protection for $repo"
+            else
+                changes="${changes}- ERROR: branch protection not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in branch protection for $repo"
         fi
@@ -326,7 +340,8 @@ apply_branch_protection() {
     local deletions
     deletions=$(echo "$effective" | jq -r '.branch_protection.allow_deletions')
 
-    gh api -X PUT "repos/$OWNER/$repo/branches/$branch/protection" --input <(cat <<PROTECT_EOF
+    local output
+    if output=$(gh api -X PUT "repos/$OWNER/$repo/branches/$branch/protection" --input <(cat <<PROTECT_EOF
 {
   "required_status_checks": {
     "strict": $strict,
@@ -345,7 +360,11 @@ apply_branch_protection() {
   "allow_deletions": $deletions
 }
 PROTECT_EOF
-    ) > /dev/null 2>&1
+    ) 2>&1); then
+        return 0
+    fi
+    log "ERROR: could not apply branch protection for $repo: $(echo "$output" | head -n 1)"
+    return 1
 }
 
 # Sync standard labels across repos.
