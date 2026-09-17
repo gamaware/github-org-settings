@@ -9,11 +9,10 @@
 # auto-merge can never satisfy the CODEOWNERS rule. Branch protection
 # is not enforced on admins, so the owner's PAT merges directly.
 #
-# Safety: only same-repository PRs are eligible (never forks), the
-# pre-commit branch must be authored by the repo owner, and a PR is
-# never merged while it is a draft, has conflicts, has no registered
-# checks, or has any failing or pending check. A PR that is behind
-# main is updated and picked up on the next run.
+# Safety: never touches drafts, fork PRs, PRs from other authors,
+# PRs with conflicts, PRs with no registered checks, or PRs with any
+# failing or pending check. A PR that is behind main is updated and
+# picked up on the next run.
 #
 # Requires: PRE_COMMIT_PAT secret (fine-grained PAT of the repo owner
 # with contents, pull requests and workflows write access). The job
@@ -56,16 +55,18 @@ jobs:
           fi
 
           # Candidate PRs: Dependabot, or the weekly pre-commit update branch
-          # opened by the repo owner. Fork PRs are never eligible, because
-          # anyone can name a fork branch to match the prefix.
-          # Capture the list first so a failing gh call aborts the job
-          # instead of silently reading as "nothing to do".
-          candidate_list=$(
+          # authored by the repo owner (the PAT owner). Fork PRs are excluded
+          # because anyone can name a fork branch to match the prefix.
+          # Capture the list first so a gh failure aborts the run instead of
+          # being mistaken for "no open PRs".
+          pr_list=$(
             gh pr list --repo "$REPO" --state open --limit 100 \
-              --json number,author,headRefName,isDraft,isCrossRepository,createdAt \
+              --json number,author,headRefName,baseRefName,headRefOid,isDraft,isCrossRepository,headRepositoryOwner \
               --jq '.[]
                 | select(.isDraft | not)
                 | select(.isCrossRepository | not)
+                | select(.headRepositoryOwner.login == env.OWNER)
+                | select(.baseRefName == "main")
                 | select(
                     ((.author.login | sub("^app/"; "")) == "dependabot")
                     or (
@@ -73,9 +74,9 @@ jobs:
                       and (.author.login == env.OWNER)
                     )
                   )
-                | "\(.number) \(.createdAt)"'
+                | "\(.number) \(.headRefOid)"'
           )
-          mapfile -t candidates <<< "$candidate_list"
+          mapfile -t candidates <<< "$pr_list"
           if [ "${#candidates[@]}" -eq 1 ] && [ -z "${candidates[0]}" ]; then
             candidates=()
           fi
@@ -85,15 +86,12 @@ jobs:
             exit 0
           fi
 
-          now=$(date -u +%s)
           merged=0
           skipped=0
 
           for entry in "${candidates[@]}"; do
             number="${entry%% *}"
-            created="${entry##* }"
-            created_epoch=$(date -u -d "$created" +%s) || created_epoch=$now
-            age_min=$(( (now - created_epoch) / 60 ))
+            head_sha="${entry##* }"
 
             if ! state=$(gh pr view "$number" --repo "$REPO" \
               --json mergeStateStatus --jq '.mergeStateStatus'); then
@@ -117,28 +115,19 @@ jobs:
                 ;;
             esac
 
-            # gh pr checks exits non-zero when checks fail or are pending,
-            # but still prints the JSON, so keep the output and ignore the
-            # exit code. Anything that is not a JSON array fails closed.
-            raw=$(gh pr checks "$number" --repo "$REPO" --json bucket 2>/dev/null) || true
-            if ! echo "$raw" | jq -e 'type == "array"' > /dev/null 2>&1; then
-              echo "PR #$number: could not read check status, skipping"
-              skipped=$((skipped + 1))
-              continue
+            # gh pr checks exits non-zero when checks fail or are pending;
+            # the JSON is still printed, so keep the output and drop the exit
+            # code. Treat empty output as "no checks" so the guard below skips.
+            summary=$(gh pr checks "$number" --repo "$REPO" --json bucket \
+              --jq '[
+                length,
+                ([.[] | select(.bucket == "fail" or .bucket == "cancel")] | length),
+                ([.[] | select(.bucket == "pending")] | length)
+              ] | @tsv' 2>/dev/null) || true
+            if [ -z "$summary" ]; then
+              summary=$'0\t0\t0'
             fi
-
-            total=$(echo "$raw" | jq 'length')
-            passed=$(echo "$raw" | jq '[.[] | select(.bucket == "pass")] | length')
-            fail=$(echo "$raw" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
-            pending=$(echo "$raw" | jq '[.[] | select(.bucket == "pending")] | length')
-
-            case "$total$passed$fail$pending" in
-              ''|*[!0-9]*)
-                echo "PR #$number: unparseable check summary, skipping"
-                skipped=$((skipped + 1))
-                continue
-                ;;
-            esac
+            IFS=$'\t' read -r total fail pending <<< "$summary"
 
             if [ "$fail" -gt 0 ]; then
               echo "PR #$number: $fail failing check(s), skipping"
@@ -150,23 +139,19 @@ jobs:
               skipped=$((skipped + 1))
               continue
             fi
-            # Never merge a PR that has no registered checks: either it is
-            # brand new, or its workflows never ran, and --admin would skip
-            # the required status checks GitHub would otherwise enforce.
+            # Never merge on an empty check list: a brand-new PR may not have
+            # registered its checks yet, and a held fork run has none at all.
             if [ "$total" -eq 0 ]; then
-              echo "PR #$number: no checks registered (${age_min}m old), skipping"
-              skipped=$((skipped + 1))
-              continue
-            fi
-            # Every check being skipped is not a green signal either.
-            if [ "$passed" -eq 0 ]; then
-              echo "PR #$number: no passing checks (all skipped), skipping"
+              echo "PR #$number: no checks registered, skipping"
               skipped=$((skipped + 1))
               continue
             fi
 
             echo "PR #$number: all $total check(s) green, merging"
-            if gh pr merge "$number" --repo "$REPO" --squash --admin --delete-branch; then
+            # Bind the merge to the commit whose checks were just inspected;
+            # if the head moved in the meantime the merge is refused.
+            if gh pr merge "$number" --repo "$REPO" --squash --admin --delete-branch \
+                --match-head-commit "$head_sha"; then
               merged=$((merged + 1))
             else
               echo "::warning::PR #$number: merge failed"

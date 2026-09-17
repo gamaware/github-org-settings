@@ -106,7 +106,7 @@ jobs:
           # by 'gh issue create' instead of trusting list order.
           # Capture the list first so a failing gh call fails the step
           # instead of silently iterating zero times.
-          OPEN_NUMBERS=$(gh issue list --label "settings-drift" --state open --json number --jq '.[].number')
+          OPEN_NUMBERS=$(gh issue list --label "settings-drift" --state open --limit 100 --json number --jq '.[].number')
           for num in $OPEN_NUMBERS; do
             if [ "$num" != "$NEW_NUMBER" ]; then
               gh issue close "$num" --comment "Superseded by #$NEW_NUMBER." \
@@ -119,7 +119,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
         run: |
-          gh issue list --label "settings-drift" --state open --json number --jq '.[].number' | while read -r num; do
+          gh issue list --label "settings-drift" --state open --limit 100 --json number --jq '.[].number' | while read -r num; do
             gh issue close "$num" --comment "All repositories are now compliant."
           done
 
