@@ -78,6 +78,7 @@ Reusable building blocks consumed by workflows:
 | `quality-checks.yml` | PR + push | Linting and validation |
 | `security.yml` | PR + push | SAST + SCA |
 | `update-pre-commit-hooks.yml` | Weekly Sunday 00:00 UTC | Hook version updates |
+| `auto-merge-bot-prs.yml` | Hourly | Squash-merge green Dependabot and pre-commit PRs |
 
 ### Reporting
 

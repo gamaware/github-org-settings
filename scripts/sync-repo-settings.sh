@@ -14,8 +14,11 @@ REPORT_FILE="${REPORT_FILE:-$ROOT_DIR/reports/sync-report.md}"
 
 mkdir -p "$(dirname "$REPORT_FILE")"
 
+# Log to stderr: every sync_* function's stdout is captured by main() as
+# that repo's drift text, so log lines on stdout would land in the report
+# and make every repo look drifted.
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
 }
 
 # Collect all repos for the owner, excluding archived and excluded repos
@@ -70,10 +73,24 @@ sync_repo_settings() {
         fi
     done
 
+    # GitHub returns 422 invalid_squash_commit_setting_combo when
+    # squash_merge_commit_message is sent without squash_merge_commit_title
+    # (or vice versa), so always send the pair from the effective baseline.
+    if echo "$patch" | jq -e 'has("squash_merge_commit_title") or has("squash_merge_commit_message")' > /dev/null; then
+        local squash_pair
+        squash_pair=$(echo "$effective" | jq '.repo_settings | {squash_merge_commit_title, squash_merge_commit_message} | with_entries(select(.value != null))')
+        patch=$(echo "$patch" | jq --argjson s "$squash_pair" '. + $s')
+    fi
+
     if [ "$changes" != "" ]; then
         if [ "$MODE" = "--apply" ]; then
-            gh api -X PATCH "repos/$OWNER/$repo" --input <(echo "$patch") > /dev/null 2>&1
-            log "APPLIED repo settings for $repo"
+            local output
+            if output=$(gh api -X PATCH "repos/$OWNER/$repo" --input <(echo "$patch") 2>&1); then
+                log "APPLIED repo settings for $repo"
+            else
+                log "ERROR: could not apply repo settings for $repo: $(echo "$output" | head -n 1)"
+                changes="${changes}- ERROR: settings not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in repo settings for $repo"
         fi
@@ -115,7 +132,8 @@ sync_security() {
         changes="- Secret scanning: \`$current_scanning\` -> \`$desired_scanning_status\`\n"
         changes="${changes}- Push protection: \`$current_push\` -> \`$desired_push_status\`\n"
         if [ "$MODE" = "--apply" ]; then
-            gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
+            local security_out
+            if security_out=$(gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
 {
   "security_and_analysis": {
     "secret_scanning": {"status": "$desired_scanning_status"},
@@ -123,8 +141,12 @@ sync_security() {
   }
 }
 SECURITY_EOF
-            ) > /dev/null 2>&1 || log "WARN: Could not update security settings for $repo (may require admin)"
-            log "APPLIED security settings for $repo"
+            ) 2>&1); then
+                log "APPLIED security settings for $repo"
+            else
+                log "ERROR: could not update security settings for $repo: $(echo "$security_out" | head -n 1)"
+                changes="${changes}- ERROR: security settings not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in security settings for $repo"
         fi
@@ -185,14 +207,34 @@ sync_branch_protection() {
     branch=$(echo "$effective" | jq -r '.branch_protection.branch')
 
     local current
-    current=$(gh api "repos/$OWNER/$repo/branches/$branch/protection" 2>/dev/null) || {
+    if ! current=$(gh api "repos/$OWNER/$repo/branches/$branch/protection" 2>&1); then
+        # Private repos on the Free plan cannot have branch protection at
+        # all, so this is not drift the sync can ever resolve.
+        if echo "$current" | grep -qE "Upgrade to GitHub Pro|\(HTTP 403\)"; then
+            log "SKIP: branch protection unavailable on this plan for $repo"
+            echo ""
+            return
+        fi
+        # Only a confirmed "Branch not protected" (404) means nothing is
+        # configured. Any other failure (auth, rate limit, outage) must not
+        # be mistaken for missing protection: the create path issues a PUT
+        # that would overwrite whatever is really there.
+        if ! echo "$current" | grep -qE "Branch not protected|\(HTTP 404\)"; then
+            log "ERROR: could not read branch protection for $repo: $(echo "$current" | head -n 1)"
+            echo -e "- ERROR: branch protection could not be read (see log)\n"
+            return
+        fi
         changes="- Branch protection: **not configured** -> will be created\n"
         if [ "$MODE" = "--apply" ]; then
-            apply_branch_protection "$repo" "$branch" "$effective"
+            if apply_branch_protection "$repo" "$branch" "$effective"; then
+                log "APPLIED branch protection for $repo"
+            else
+                changes="${changes}- ERROR: branch protection not applied (see log)\n"
+            fi
         fi
         echo -e "$changes"
         return
-    }
+    fi
 
     # Check each protection setting
     local current_reviews desired_reviews
@@ -255,8 +297,11 @@ sync_branch_protection() {
 
     if [ "$drift" = "true" ]; then
         if [ "$MODE" = "--apply" ]; then
-            apply_branch_protection "$repo" "$branch" "$effective"
-            log "APPLIED branch protection for $repo"
+            if apply_branch_protection "$repo" "$branch" "$effective"; then
+                log "APPLIED branch protection for $repo"
+            else
+                changes="${changes}- ERROR: branch protection not applied (see log)\n"
+            fi
         else
             log "DRIFT detected in branch protection for $repo"
         fi
@@ -308,7 +353,8 @@ apply_branch_protection() {
     local deletions
     deletions=$(echo "$effective" | jq -r '.branch_protection.allow_deletions')
 
-    gh api -X PUT "repos/$OWNER/$repo/branches/$branch/protection" --input <(cat <<PROTECT_EOF
+    local output
+    if output=$(gh api -X PUT "repos/$OWNER/$repo/branches/$branch/protection" --input <(cat <<PROTECT_EOF
 {
   "required_status_checks": {
     "strict": $strict,
@@ -327,7 +373,11 @@ apply_branch_protection() {
   "allow_deletions": $deletions
 }
 PROTECT_EOF
-    ) > /dev/null 2>&1
+    ) 2>&1); then
+        return 0
+    fi
+    log "ERROR: could not apply branch protection for $repo: $(echo "$output" | head -n 1)"
+    return 1
 }
 
 # Sync standard labels across repos.
