@@ -211,6 +211,15 @@ sync_branch_protection() {
             echo ""
             return
         fi
+        # Only a confirmed "Branch not protected" (404) means nothing is
+        # configured. Any other failure (auth, rate limit, outage) must not
+        # be mistaken for missing protection: the create path issues a PUT
+        # that would overwrite whatever is really there.
+        if ! echo "$current" | grep -q "Branch not protected"; then
+            log "ERROR: could not read branch protection for $repo: $(echo "$current" | head -n 1)"
+            echo -e "- ERROR: branch protection could not be read (see log)\n"
+            return
+        fi
         changes="- Branch protection: **not configured** -> will be created\n"
         if [ "$MODE" = "--apply" ]; then
             if apply_branch_protection "$repo" "$branch" "$effective"; then

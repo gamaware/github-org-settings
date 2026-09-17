@@ -119,9 +119,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ORG_SETTINGS_PAT }}
         run: |
-          gh issue list --label "settings-drift" --state open --limit 100 --json number --jq '.[].number' | while read -r num; do
-            gh issue close "$num" --comment "All repositories are now compliant."
+          # Capture the list first so a failing gh call fails the step
+          # instead of silently iterating zero times. Close every issue
+          # even if one close fails, then fail the step so the leftover
+          # is visible.
+          OPEN_NUMBERS=$(gh issue list --label "settings-drift" --state open --limit 100 --json number --jq '.[].number')
+          close_failed=0
+          for num in $OPEN_NUMBERS; do
+            if ! gh issue close "$num" --comment "All repositories are now compliant."; then
+              echo "::warning::Could not close drift issue #$num"
+              close_failed=1
+            fi
           done
+          if [ "$close_failed" -ne 0 ]; then
+            exit 1
+          fi
 
   new-repo-check:
     name: Discover New Repositories
