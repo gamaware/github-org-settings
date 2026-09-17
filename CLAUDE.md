@@ -71,6 +71,10 @@ General, secrets, shell, markdown, prose (Vale), GitHub Actions
 - `security.yml` — Semgrep SAST + Trivy SCA (via composite action)
 - `update-pre-commit-hooks.yml` — weekly auto-update via PR (via
   composite action)
+- `auto-merge-bot-prs.yml` — hourly scheduled job that squash-merges
+  Dependabot and pre-commit PRs with admin bypass once every check is
+  green (no approval step; GitHub rejects self-approval with the
+  owner's PAT)
 
 ## Composite Actions
 
@@ -85,8 +89,9 @@ General, secrets, shell, markdown, prose (Vale), GitHub Actions
 - `/audit` — run a dry-run settings check across all repos
 - `/add-repo-override` — add a per-repo exception to overrides.json
 - `/exclude-repo` — exclude a repository from governance
-- `/ship [PR-number]` — end-to-end PR lifecycle: update docs, commit,
-  create PR, monitor CI, address reviews (CodeRabbit + Copilot), merge
+- `/ship-it [PR-number]` — end-to-end PR lifecycle: update docs, commit,
+  create PR, monitor CI, address reviews (CodeRabbit + Copilot), merge,
+  clean up stale branches. Uses global skill.
 
 ## Code Review
 
