@@ -14,8 +14,11 @@ REPORT_FILE="${REPORT_FILE:-$ROOT_DIR/reports/sync-report.md}"
 
 mkdir -p "$(dirname "$REPORT_FILE")"
 
+# Log to stderr: every sync_* function's stdout is captured by main() as
+# that repo's drift text, so log lines on stdout would land in the report
+# and make every repo look drifted.
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
 }
 
 # Collect all repos for the owner, excluding archived and excluded repos
