@@ -114,6 +114,14 @@ jobs:
                 skipped=$((skipped + 1))
                 continue
                 ;;
+              CLEAN|BLOCKED|UNSTABLE|HAS_HOOKS)
+                ;;
+              *)
+                # UNKNOWN (mergeability still being computed) or anything new.
+                echo "PR #$number: merge state $state, skipping"
+                skipped=$((skipped + 1))
+                continue
+                ;;
             esac
 
             # gh pr checks exits non-zero on API errors or when no checks exist
@@ -155,11 +163,15 @@ jobs:
             fi
 
             echo "PR #$number: all $total check(s) green, merging"
-            # Bind the merge to the commit whose checks were just inspected;
-            # if the head moved in the meantime the merge is refused.
+            # Bind the merge to the head captured before the checks were
+            # inspected; if the head moved since then, the merge is refused.
             if gh pr merge "$number" --repo "$REPO" --squash --admin --delete-branch \
                 --match-head-commit "$head_sha"; then
               merged=$((merged + 1))
+              # main has moved: stop here so every remaining candidate is
+              # re-evaluated against the new base on the next run.
+              echo "Merged one PR; remaining candidates are re-evaluated next run."
+              break
             else
               echo "::warning::PR #$number: merge failed"
               skipped=$((skipped + 1))
