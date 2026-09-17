@@ -15,10 +15,7 @@
 # picked up on the next run.
 #
 # Requires: PRE_COMMIT_PAT secret (fine-grained PAT of the repo owner
-# with contents, pull requests and workflows write access). The job
-# runs in the "automation" environment so the secret is only read
-# inside a dedicated environment; GitHub creates the environment on
-# first use if it does not exist yet.
+# with contents, pull requests and workflows write access).
 # -----------------------------------------------------------------
 name: Auto-merge bot PRs
 run-name: "Auto-merge bot PRs (${{ github.event_name }})"
@@ -38,7 +35,6 @@ jobs:
   merge:
     name: Merge green bot PRs
     runs-on: ubuntu-latest
-    environment: automation
     timeout-minutes: 15
     steps:
       - name: Merge eligible PRs
@@ -115,9 +111,10 @@ jobs:
                 ;;
             esac
 
-            # gh pr checks exits non-zero when checks fail or are pending;
-            # the JSON is still printed, so keep the output and drop the exit
-            # code. Treat empty output as "no checks" so the guard below skips.
+            # gh pr checks exits non-zero on API errors or when no checks exist
+            # (with --json it exits 0 for failing or pending checks). Keep the
+            # output, drop the exit code, and treat empty output as "no checks"
+            # so the guard below skips.
             summary=$(gh pr checks "$number" --repo "$REPO" --json bucket \
               --jq '[
                 length,
