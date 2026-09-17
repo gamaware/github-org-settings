@@ -16,7 +16,10 @@
 # main is updated and picked up on the next run.
 #
 # Requires: PRE_COMMIT_PAT secret (fine-grained PAT of the repo owner
-# with contents, pull requests and workflows write access).
+# with contents, pull requests and workflows write access). The job
+# runs in the "automation" environment so the secret is only read
+# inside a dedicated environment; GitHub creates the environment on
+# first use if it does not exist yet.
 # -----------------------------------------------------------------
 name: Auto-merge bot PRs
 run-name: "Auto-merge bot PRs (${{ github.event_name }})"
@@ -36,6 +39,7 @@ jobs:
   merge:
     name: Merge green bot PRs
     runs-on: ubuntu-latest
+    environment: automation
     timeout-minutes: 15
     steps:
       - name: Merge eligible PRs
