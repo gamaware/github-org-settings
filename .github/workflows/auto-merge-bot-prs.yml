@@ -1,0 +1,169 @@
+# -----------------------------------------------------------------
+# Auto-merge bot PRs
+#
+# Squash-merges Dependabot PRs and the weekly pre-commit hook update
+# PRs once every check on the PR is green and none is pending.
+#
+# Why admin bypass: the pre-commit PRs are authored with the repo
+# owner's PAT, and GitHub refuses self-approval, so a review-based
+# auto-merge can never satisfy the CODEOWNERS rule. Branch protection
+# is not enforced on admins, so the owner's PAT merges directly.
+#
+# Safety: only same-repository PRs are eligible (never forks), the
+# pre-commit branch must be authored by the repo owner, and a PR is
+# never merged while it is a draft, has conflicts, has no registered
+# checks, or has any failing or pending check. A PR that is behind
+# main is updated and picked up on the next run.
+#
+# Requires: PRE_COMMIT_PAT secret (fine-grained PAT of the repo owner
+# with contents, pull requests and workflows write access).
+# -----------------------------------------------------------------
+name: Auto-merge bot PRs
+run-name: "Auto-merge bot PRs (${{ github.event_name }})"
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: auto-merge-bot-prs
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge green bot PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Merge eligible PRs
+        env:
+          GH_TOKEN: ${{ secrets.PRE_COMMIT_PAT }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::PRE_COMMIT_PAT secret is not set on this repository"
+            exit 1
+          fi
+
+          # Candidate PRs: Dependabot, or the weekly pre-commit update branch
+          # opened by the repo owner. Fork PRs are never eligible, because
+          # anyone can name a fork branch to match the prefix.
+          # Capture the list first so a failing gh call aborts the job
+          # instead of silently reading as "nothing to do".
+          candidate_list=$(
+            gh pr list --repo "$REPO" --state open --limit 100 \
+              --json number,author,headRefName,isDraft,isCrossRepository,createdAt \
+              --jq '.[]
+                | select(.isDraft | not)
+                | select(.isCrossRepository | not)
+                | select(
+                    ((.author.login | sub("^app/"; "")) == "dependabot")
+                    or (
+                      (.headRefName | startswith("chore/update-pre-commit-hooks"))
+                      and (.author.login == env.OWNER)
+                    )
+                  )
+                | "\(.number) \(.createdAt)"'
+          )
+          mapfile -t candidates <<< "$candidate_list"
+          if [ "${#candidates[@]}" -eq 1 ] && [ -z "${candidates[0]}" ]; then
+            candidates=()
+          fi
+
+          if [ "${#candidates[@]}" -eq 0 ]; then
+            echo "No eligible bot PRs open."
+            exit 0
+          fi
+
+          now=$(date -u +%s)
+          merged=0
+          skipped=0
+
+          for entry in "${candidates[@]}"; do
+            number="${entry%% *}"
+            created="${entry##* }"
+            created_epoch=$(date -u -d "$created" +%s) || created_epoch=$now
+            age_min=$(( (now - created_epoch) / 60 ))
+
+            state=$(gh pr view "$number" --repo "$REPO" \
+              --json mergeStateStatus --jq '.mergeStateStatus')
+
+            case "$state" in
+              DIRTY)
+                echo "PR #$number: merge conflicts, skipping"
+                skipped=$((skipped + 1))
+                continue
+                ;;
+              BEHIND)
+                echo "PR #$number: behind base, requesting branch update"
+                gh pr update-branch "$number" --repo "$REPO" \
+                  || echo "PR #$number: branch update failed, will retry next run"
+                skipped=$((skipped + 1))
+                continue
+                ;;
+            esac
+
+            # gh pr checks exits non-zero when checks fail or are pending,
+            # but still prints the JSON, so keep the output and ignore the
+            # exit code. Anything that is not a JSON array fails closed.
+            raw=$(gh pr checks "$number" --repo "$REPO" --json bucket 2>/dev/null) || true
+            if ! echo "$raw" | jq -e 'type == "array"' > /dev/null 2>&1; then
+              echo "PR #$number: could not read check status, skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            total=$(echo "$raw" | jq 'length')
+            passed=$(echo "$raw" | jq '[.[] | select(.bucket == "pass")] | length')
+            fail=$(echo "$raw" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
+            pending=$(echo "$raw" | jq '[.[] | select(.bucket == "pending")] | length')
+
+            case "$total$passed$fail$pending" in
+              ''|*[!0-9]*)
+                echo "PR #$number: unparseable check summary, skipping"
+                skipped=$((skipped + 1))
+                continue
+                ;;
+            esac
+
+            if [ "$fail" -gt 0 ]; then
+              echo "PR #$number: $fail failing check(s), skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            if [ "$pending" -gt 0 ]; then
+              echo "PR #$number: $pending pending check(s), skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            # Never merge a PR that has no registered checks: either it is
+            # brand new, or its workflows never ran, and --admin would skip
+            # the required status checks GitHub would otherwise enforce.
+            if [ "$total" -eq 0 ]; then
+              echo "PR #$number: no checks registered (${age_min}m old), skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            # Every check being skipped is not a green signal either.
+            if [ "$passed" -eq 0 ]; then
+              echo "PR #$number: no passing checks (all skipped), skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "PR #$number: all $total check(s) green, merging"
+            if gh pr merge "$number" --repo "$REPO" --squash --admin --delete-branch; then
+              merged=$((merged + 1))
+            else
+              echo "::warning::PR #$number: merge failed"
+              skipped=$((skipped + 1))
+            fi
+          done
+
+          echo "Merged: $merged | Skipped: $skipped"

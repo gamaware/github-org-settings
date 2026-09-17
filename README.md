@@ -179,6 +179,7 @@ github-org-settings/
 │   │   └── update-pre-commit-composite/  # Composite: hook updates
 │   │       └── action.yml
 │   ├── workflows/
+│   │   ├── auto-merge-bot-prs.yml   # Hourly admin merge of green bot PRs
 │   │   ├── sync-settings.yml        # Weekly settings sync + reports
 │   │   ├── quality-checks.yml       # PR/push linting and validation
 │   │   ├── security.yml             # SAST + SCA scanning
@@ -306,6 +307,7 @@ Add repo names to the `excluded` array in `config/overrides.json`:
 | `quality-checks.yml` | PR + push to main | Markdown, YAML, shell, structure |
 | `security.yml` | PR + push to main | Semgrep SAST + Trivy SCA |
 | `update-pre-commit-hooks.yml` | Weekly + manual | Auto-update hook versions |
+| `auto-merge-bot-prs.yml` | Hourly + manual | Squash-merge green Dependabot and pre-commit PRs |
 
 ## Author
 

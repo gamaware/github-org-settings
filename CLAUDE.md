@@ -71,6 +71,10 @@ General, secrets, shell, markdown, prose (Vale), GitHub Actions
 - `security.yml` — Semgrep SAST + Trivy SCA (via composite action)
 - `update-pre-commit-hooks.yml` — weekly auto-update via PR (via
   composite action)
+- `auto-merge-bot-prs.yml` — hourly scheduled job that squash-merges
+  Dependabot and pre-commit PRs with admin bypass once every check is
+  green (no approval step; GitHub rejects self-approval with the
+  owner's PAT)
 
 ## Composite Actions
 
