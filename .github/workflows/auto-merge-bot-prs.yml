@@ -88,6 +88,11 @@ jobs:
           for entry in "${candidates[@]}"; do
             number="${entry%% *}"
             head_sha="${entry##* }"
+            if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::PR #$number: missing head SHA in '$entry', skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
 
             if ! state=$(gh pr view "$number" --repo "$REPO" \
               --json mergeStateStatus --jq '.mergeStateStatus'); then
@@ -105,7 +110,7 @@ jobs:
               BEHIND)
                 echo "PR #$number: behind base, requesting branch update"
                 gh pr update-branch "$number" --repo "$REPO" \
-                  || echo "PR #$number: branch update failed, will retry next run"
+                  || echo "::warning::PR #$number: branch update failed, will retry next run"
                 skipped=$((skipped + 1))
                 continue
                 ;;
@@ -115,13 +120,18 @@ jobs:
             # (with --json it exits 0 for failing or pending checks). Keep the
             # output, drop the exit code, and treat empty output as "no checks"
             # so the guard below skips.
+            checks_err="${RUNNER_TEMP:-/tmp}/pr-checks-$number.err"
             summary=$(gh pr checks "$number" --repo "$REPO" --json bucket \
               --jq '[
                 length,
                 ([.[] | select(.bucket == "fail" or .bucket == "cancel")] | length),
                 ([.[] | select(.bucket == "pending")] | length)
-              ] | @tsv' 2>/dev/null) || true
+              ] | @tsv' 2>"$checks_err") || true
             if [ -z "$summary" ]; then
+              # Distinguish a real API/auth failure from "no checks reported".
+              if [ -s "$checks_err" ] && ! grep -qi "no checks" "$checks_err"; then
+                echo "::warning::PR #$number: gh pr checks failed: $(head -n 1 "$checks_err")"
+              fi
               summary=$'0\t0\t0'
             fi
             IFS=$'\t' read -r total fail pending <<< "$summary"
