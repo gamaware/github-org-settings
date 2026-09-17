@@ -85,8 +85,9 @@ General, secrets, shell, markdown, prose (Vale), GitHub Actions
 - `/audit` — run a dry-run settings check across all repos
 - `/add-repo-override` — add a per-repo exception to overrides.json
 - `/exclude-repo` — exclude a repository from governance
-- `/ship [PR-number]` — end-to-end PR lifecycle: update docs, commit,
-  create PR, monitor CI, address reviews (CodeRabbit + Copilot), merge
+- `/ship-it [PR-number]` — end-to-end PR lifecycle: update docs, commit,
+  create PR, monitor CI, address reviews (CodeRabbit + Copilot), merge,
+  clean up stale branches. Uses global skill.
 
 ## Code Review
 
