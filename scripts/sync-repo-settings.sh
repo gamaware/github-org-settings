@@ -132,7 +132,8 @@ sync_security() {
         changes="- Secret scanning: \`$current_scanning\` -> \`$desired_scanning_status\`\n"
         changes="${changes}- Push protection: \`$current_push\` -> \`$desired_push_status\`\n"
         if [ "$MODE" = "--apply" ]; then
-            if gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
+            local security_out
+            if security_out=$(gh api -X PATCH "repos/$OWNER/$repo" --input <(cat <<SECURITY_EOF
 {
   "security_and_analysis": {
     "secret_scanning": {"status": "$desired_scanning_status"},
@@ -140,10 +141,10 @@ sync_security() {
   }
 }
 SECURITY_EOF
-            ) > /dev/null 2>&1; then
+            ) 2>&1); then
                 log "APPLIED security settings for $repo"
             else
-                log "WARN: Could not update security settings for $repo (may require admin)"
+                log "ERROR: could not update security settings for $repo: $(echo "$security_out" | head -n 1)"
                 changes="${changes}- ERROR: security settings not applied (see log)\n"
             fi
         else
@@ -209,7 +210,7 @@ sync_branch_protection() {
     if ! current=$(gh api "repos/$OWNER/$repo/branches/$branch/protection" 2>&1); then
         # Private repos on the Free plan cannot have branch protection at
         # all, so this is not drift the sync can ever resolve.
-        if echo "$current" | grep -q "Upgrade to GitHub Pro"; then
+        if echo "$current" | grep -qE "Upgrade to GitHub Pro|\(HTTP 403\)"; then
             log "SKIP: branch protection unavailable on this plan for $repo"
             echo ""
             return
@@ -218,7 +219,7 @@ sync_branch_protection() {
         # configured. Any other failure (auth, rate limit, outage) must not
         # be mistaken for missing protection: the create path issues a PUT
         # that would overwrite whatever is really there.
-        if ! echo "$current" | grep -q "Branch not protected"; then
+        if ! echo "$current" | grep -qE "Branch not protected|\(HTTP 404\)"; then
             log "ERROR: could not read branch protection for $repo: $(echo "$current" | head -n 1)"
             echo -e "- ERROR: branch protection could not be read (see log)\n"
             return
