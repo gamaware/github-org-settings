@@ -97,7 +97,6 @@
     "CODEOWNERS",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "CLAUDE.md",
     ".pre-commit-config.yaml",
     ".coderabbit.yaml",
     ".github/copilot-instructions.md",

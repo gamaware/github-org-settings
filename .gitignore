@@ -22,7 +22,7 @@ Thumbs.db
 *.log
 logs/
 
-# Claude Code
+# Editor session files
 *.conversation
 
 # Generated reports (kept in CI artifacts, not committed)
