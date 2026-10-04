@@ -137,7 +137,6 @@ report (not auto-created, since content is repo-specific).
 | `CODEOWNERS` | Assign default reviewers |
 | `CONTRIBUTING.md` | Contribution guidelines |
 | `SECURITY.md` | Vulnerability disclosure policy |
-| `CLAUDE.md` | Claude Code project instructions |
 | `.pre-commit-config.yaml` | Local linting and validation |
 | `.coderabbit.yaml` | CodeRabbit auto-review configuration |
 | `.github/copilot-instructions.md` | Copilot code review instructions |
@@ -159,17 +158,6 @@ corrected in `--apply` mode.
 
 ```text
 github-org-settings/
-├── .claude/
-│   ├── settings.json               # Claude Code hooks config
-│   ├── hooks/
-│   │   └── post-edit.sh             # Auto-format on edit
-│   └── skills/
-│       ├── audit/                   # /audit — dry-run settings check
-│       │   └── SKILL.md
-│       ├── add-repo-override/       # /add-repo-override — add exception
-│       │   └── SKILL.md
-│       └── exclude-repo/            # /exclude-repo — exclude a repo
-│           └── SKILL.md
 ├── .github/
 │   ├── actions/
 │   │   ├── security-scan/           # Composite: Semgrep + Trivy
@@ -215,7 +203,6 @@ github-org-settings/
 ├── .pre-commit-config.yaml
 ├── .secrets.baseline
 ├── zizmor.yml                       # GitHub Actions security config
-├── CLAUDE.md                        # Claude Code project instructions
 ├── CODEOWNERS
 ├── CONTRIBUTING.md
 ├── LICENSE
